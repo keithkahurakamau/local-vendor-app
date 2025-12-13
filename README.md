@@ -6,6 +6,7 @@ The **Hyper-Local Vendor Inventory & Finder** is a full-stack web application de
 
 The core goal of this project is to provide a proximity-based search (within **5 km**) that ensures data freshness by only displaying vendors who have updated their location and menu within the last **3 hours**. The application also features integrated payments using the **M-Pesa C2B STK Push** system.
 
+
 ### Key Features
 * **Customer:**
     * **Real-time Search:** Filter vendors by food item, proximity (5km radius), and freshness (<3 hours).
