@@ -1,5 +1,5 @@
 # local-vendor-app
-# Hyper-Local Vendor Inventory & Finder (MVP v1.0)
+## Hyper-Local Vendor Inventory & Finder (MVP v1.0)
 
 ## 📖 Project Overview
 The **Hyper-Local Vendor Inventory & Finder** is a full-stack web application designed to connect customers with nearby food vendors based on real-time menu availability.
@@ -106,7 +106,7 @@ npm install
 
 # Start the Development Server
 npm run dev
-#🤝 Contribution & Workflow (Git Flow)
+## 🤝 Contribution & Workflow (Git Flow)
 This project strictly adheres to the Git Flow workflow.
 
 main: Production-ready code.
