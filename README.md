@@ -65,14 +65,18 @@ The core goal of this project is to provide a proximity-based search (within **5
 * PostgreSQL
 * Git
 
+### 0. Clone Repository
+```bash
+# Clone the repository
+git clone <repository-url>
+```
+
 ### 1. Database Setup
 1.  Create a PostgreSQL database named `vendor_inventory_db`.
 2.  Ensure you have the necessary credentials configured.
 
 ### 2. Backend (Flask)
 ```bash
-# Clone the repository
-git clone <repository-url>
 cd backend
 
 # Create and activate virtual environment
@@ -94,6 +98,10 @@ flask db upgrade
 
 # Start the Server
 flask run
+```
+
+### 3. Frontend (React)
+```bash
 # Navigate to frontend directory
 cd ../frontend
 
@@ -106,6 +114,10 @@ npm install
 
 # Start the Development Server
 npm run dev
+```
+
+---
+
 ## 🤝 Contribution & Workflow (Git Flow)
 This project strictly adheres to the Git Flow workflow.
 
