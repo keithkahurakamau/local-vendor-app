@@ -106,7 +106,7 @@ npm install
 
 # Start the Development Server
 npm run dev
-🤝 Contribution & Workflow (Git Flow)
+#🤝 Contribution & Workflow (Git Flow)
 This project strictly adheres to the Git Flow workflow.
 
 main: Production-ready code.
