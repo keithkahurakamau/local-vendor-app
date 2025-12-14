@@ -145,10 +145,13 @@ Wait for code review and approval before merging.
 ### Project Root
 
 ```
-/hyper-local-vendor-finder
-├── .gitignore             # Ignore venv, node_modules, .env
-├── README.md              # Documentation [cite: 12]
-└── /docs                  # Optional: ERD diagrams, wireframes
+/local-vendor-app
+├── .git/
+├── .gitignore
+├── LICENSE
+├── README.md
+├── backend/
+└── frontend/
 ```
 
 ### Backend (Python/Flask)
@@ -157,27 +160,26 @@ Focus: RESTful API, Geospatial Logic, Database, M-Pesa Integration
 
 ```
 /backend
-├── run.py                 # Entry point to start the Flask server
-├── .env                   # Secrets: DB URL, MPesa Keys, JWT Secret [cite: 54]
-├── requirements.txt       # Python dependencies (flask, sqlalchemy, etc.)
+├── .gitignore
 ├── Procfile               # For Render deployment
-└── /app
+├── README.md
+├── requirements.txt       # Python dependencies (flask, sqlalchemy, etc.)
+├── run.py                 # Entry point to start the Flask server
+└── app/
     ├── __init__.py        # App factory: Initialize Flask, DB, CORS, Migrate
     ├── config.py          # Configuration classes (Dev, Prod, Testing)
     ├── extensions.py      # Initialize shared extensions (db, jwt, migrate)
     ├── models.py          # DB Models: User, VendorLocation, Transaction [cite: 7, 41]
-    │
-    ├── /routes            # API Blueprints
+    ├── routes/            # API Blueprints
     │   ├── __init__.py
+    │   ├── admin_routes.py    # GET /logs, Dashboard stats [cite: 51]
     │   ├── auth_routes.py     # Login/Register (JWT generation) [cite: 66]
     │   ├── customer_routes.py # GET /search, POST /pay [cite: 41]
-    │   ├── vendor_routes.py   # POST /update-location [cite: 41]
-    │   └── admin_routes.py    # GET /logs, Dashboard stats [cite: 51]
-    │
-    └── /utils             # Helper logic
+    │   └── vendor_routes.py   # POST /update-location [cite: 41]
+    └── utils/             # Helper logic
+        ├── decorators.py      # Custom Auth decorators (@token_required) [cite: 66]
         ├── geospatial.py      # Haversine formula implementation [cite: 41]
-        ├── mpesa_handler.py   # STK Push & Callback logic [cite: 35]
-        └── decorators.py      # Custom Auth decorators (@token_required) [cite: 66]
+        └── mpesa_handler.py   # STK Push & Callback logic [cite: 35]
 ```
 
 ### Frontend (React + Tailwind)
@@ -186,38 +188,40 @@ Focus: SPA, Maps, Dynamic State, Responsive UI
 
 ```
 /frontend
+├── .gitignore
+├── README.md
+├── eslint.config.js
+├── index.html
+├── node_modules/
+├── package-lock.json
 ├── package.json           # Dependencies (react, axios, leaflet, etc.)
+├── postcss.config.js
+├── public/
+├── src/
+│   ├── App.css
+│   ├── App.jsx            # Main routing (React Router) [cite: 7]
+│   ├── assets/            # Images, icons, logos
+│   │   └── react.svg
+│   ├── context/           # Global State Management [cite: 7]
+│   │   ├── AuthContext.jsx    # Stores JWTs (Vendor/Admin)
+│   │   └── LocationContext.jsx# Stores Customer Lat/Lon
+│   ├── hooks/             # Custom React Hooks
+│   │   └── useGeoLocation.js  # Wrapper for navigator.geolocation [cite: 44]
+│   ├── index.css          # Global styles / Tailwind directives
+│   ├── main.jsx           # React entry point
+│   ├── pages/             # Full Page Views
+│   │   ├── admin/
+│   │   │   ├── AdminDashboard.jsx # Admin Map & Logs [cite: 51]
+│   │   │   └── AdminLogin.jsx
+│   │   ├── customer/
+│   │   │   └── Home.jsx       # Customer Map View (Public) [cite: 47]
+│   │   └── vendor/
+│   │       ├── VendorCheckIn.jsx  # Location/Menu Update Form [cite: 49]
+│   │       └── VendorLogin.jsx    # Vendor Auth Page
+│   └── services/          # API Integration (Axios) [cite: 62]
+│       ├── api.js             # Axios instance (Base URL, Interceptors)
+│       ├── authService.js     # Login/Register calls
+│       └── mapService.js      # Fetch vendors (GET /search)
 ├── tailwind.config.js     # Tailwind CSS configuration [cite: 44]
-├── vite.config.js         # Build tool config (or webpack.config.js)
-├── .env.local             # Environment vars: VITE_API_BASE_URL
-│
-└── /src
-    ├── main.jsx           # React entry point
-    ├── App.jsx            # Main routing (React Router) [cite: 7]
-    ├── index.css          # Global styles / Tailwind directives
-    │
-    ├── /assets            # Images, icons, logos
-    │
-    ├── /components        # Reusable UI Blocks
-    │   ├── /common        # Generic: Buttons, Inputs, Modals, Loaders
-    │   ├── /layout        # Navbar, Footer
-    │   └── /map           # MapContainer, VendorMarker, PopupCard [cite: 44]
-    │
-    ├── /pages             # Full Page Views
-    │   ├── Home.jsx           # Customer Map View (Public) [cite: 47]
-    │   ├── VendorLogin.jsx    # Vendor Auth Page
-    │   ├── VendorCheckIn.jsx  # Location/Menu Update Form [cite: 49]
-    │   └── AdminDashboard.jsx # Admin Map & Logs [cite: 51]
-    │
-    ├── /context           # Global State Management [cite: 7]
-    │   ├── AuthContext.jsx    # Stores JWTs (Vendor/Admin)
-    │   └── LocationContext.jsx# Stores Customer Lat/Lon
-    │
-    ├── /services          # API Integration (Axios) [cite: 62]
-    │   ├── api.js             # Axios instance (Base URL, Interceptors)
-    │   ├── authService.js     # Login/Register calls
-    │   └── mapService.js      # Fetch vendors (GET /search)
-    │
-    └── /hooks             # Custom React Hooks
-        └── useGeoLocation.js  # Wrapper for navigator.geolocation [cite: 44]
+└── vite.config.js         # Build tool config (or webpack.config.js)
 ```
