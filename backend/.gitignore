@@ -1,12 +1,5 @@
 # Environment files (do NOT commit secrets)
 .env
-.env.*
-.env.local
-.env.development
-.env.test
-.env.production
-.env.*.local
-.envrc
 
 # Python
 __pycache__/
@@ -32,10 +25,6 @@ build/
 .DS_Store
 Thumbs.db
 
-# Database
-*.db
-*.sqlite
-*.sqlite3
 
 # Logs
 *.log
