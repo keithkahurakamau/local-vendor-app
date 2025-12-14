@@ -161,25 +161,25 @@ Focus: RESTful API, Geospatial Logic, Database, M-Pesa Integration
 ```
 /backend
 ├── .gitignore
-├── Procfile
+├── Procfile               # For Render deployment
 ├── README.md
-├── requirements.txt
-├── run.py
+├── requirements.txt       # Python dependencies (flask, sqlalchemy, etc.)
+├── run.py                 # Entry point to start the Flask server
 └── app/
-    ├── __init__.py
-    ├── config.py
-    ├── extensions.py
-    ├── models.py
-    ├── routes/
+    ├── __init__.py        # App factory: Initialize Flask, DB, CORS, Migrate
+    ├── config.py          # Configuration classes (Dev, Prod, Testing)
+    ├── extensions.py      # Initialize shared extensions (db, jwt, migrate)
+    ├── models.py          # DB Models: User, VendorLocation, Transaction [cite: 7, 41]
+    ├── routes/            # API Blueprints
     │   ├── __init__.py
-    │   ├── admin_routes.py
-    │   ├── auth_routes.py
-    │   ├── customer_routes.py
-    │   └── vendor_routes.py
-    └── utils/
-        ├── decorators.py
-        ├── geospatial.py
-        └── mpesa_handler.py
+    │   ├── admin_routes.py    # GET /logs, Dashboard stats [cite: 51]
+    │   ├── auth_routes.py     # Login/Register (JWT generation) [cite: 66]
+    │   ├── customer_routes.py # GET /search, POST /pay [cite: 41]
+    │   └── vendor_routes.py   # POST /update-location [cite: 41]
+    └── utils/             # Helper logic
+        ├── decorators.py      # Custom Auth decorators (@token_required) [cite: 66]
+        ├── geospatial.py      # Haversine formula implementation [cite: 41]
+        └── mpesa_handler.py   # STK Push & Callback logic [cite: 35]
 ```
 
 ### Frontend (React + Tailwind)
@@ -194,34 +194,34 @@ Focus: SPA, Maps, Dynamic State, Responsive UI
 ├── index.html
 ├── node_modules/
 ├── package-lock.json
-├── package.json
+├── package.json           # Dependencies (react, axios, leaflet, etc.)
 ├── postcss.config.js
 ├── public/
 ├── src/
 │   ├── App.css
-│   ├── App.jsx
-│   ├── assets/
+│   ├── App.jsx            # Main routing (React Router) [cite: 7]
+│   ├── assets/            # Images, icons, logos
 │   │   └── react.svg
-│   ├── context/
-│   │   ├── AuthContext.jsx
-│   │   └── LocationContext.jsx
-│   ├── hooks/
-│   │   └── useGeoLocation.js
-│   ├── index.css
-│   ├── main.jsx
-│   ├── pages/
+│   ├── context/           # Global State Management [cite: 7]
+│   │   ├── AuthContext.jsx    # Stores JWTs (Vendor/Admin)
+│   │   └── LocationContext.jsx# Stores Customer Lat/Lon
+│   ├── hooks/             # Custom React Hooks
+│   │   └── useGeoLocation.js  # Wrapper for navigator.geolocation [cite: 44]
+│   ├── index.css          # Global styles / Tailwind directives
+│   ├── main.jsx           # React entry point
+│   ├── pages/             # Full Page Views
 │   │   ├── admin/
-│   │   │   ├── AdminDashboard.jsx
+│   │   │   ├── AdminDashboard.jsx # Admin Map & Logs [cite: 51]
 │   │   │   └── AdminLogin.jsx
 │   │   ├── customer/
-│   │   │   └── Home.jsx
+│   │   │   └── Home.jsx       # Customer Map View (Public) [cite: 47]
 │   │   └── vendor/
-│   │       ├── VendorCheckIn.jsx
-│   │       └── VendorLogin.jsx
-│   └── services/
-│       ├── api.js
-│       ├── authService.js
-│       └── mapService.js
-├── tailwind.config.js
-└── vite.config.js
+│   │       ├── VendorCheckIn.jsx  # Location/Menu Update Form [cite: 49]
+│   │       └── VendorLogin.jsx    # Vendor Auth Page
+│   └── services/          # API Integration (Axios) [cite: 62]
+│       ├── api.js             # Axios instance (Base URL, Interceptors)
+│       ├── authService.js     # Login/Register calls
+│       └── mapService.js      # Fetch vendors (GET /search)
+├── tailwind.config.js     # Tailwind CSS configuration [cite: 44]
+└── vite.config.js         # Build tool config (or webpack.config.js)
 ```
