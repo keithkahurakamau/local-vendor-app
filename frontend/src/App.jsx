@@ -1,35 +1,52 @@
-import { useState } from 'react'
-import reactLogo from './assets/react.svg'
-import viteLogo from '/vite.svg'
-import './App.css'
+import React from 'react';
+import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 
-function App() {
-  const [count, setCount] = useState(0)
+// CRITICAL: Leaflet Map CSS
+// (The map will look broken/scrambled without this line)
+import 'leaflet/dist/leaflet.css';
 
+// Import your Registration Page
+// Path based on your error log: src/pages/vendor/newVendorRegister.jsx
+import VendorRegister from './pages/vendor/newVendorRegister';
+
+// Placeholder components for links (so the app doesn't crash if you click 'Login')
+const LoginPlaceholder = () => (
+  <div className="flex items-center justify-center h-screen bg-gray-50 text-gray-500">
+    <p>Login Page Placeholder</p>
+  </div>
+);
+
+const DashboardPlaceholder = () => (
+  <div className="flex items-center justify-center h-screen bg-green-50 text-green-700">
+    <p>Registration Successful! Welcome to the Dashboard.</p>
+  </div>
+);
+
+const App = () => {
   return (
-    <>
-      <div>
-        <a href="https://vite.dev" target="_blank">
-          <img src={viteLogo} className="logo" alt="Vite logo" />
-        </a>
-        <a href="https://react.dev" target="_blank">
-          <img src={reactLogo} className="logo react" alt="React logo" />
-        </a>
-      </div>
-      <h1>Vite + React</h1>
-      <div className="card">
-        <button onClick={() => setCount((count) => count + 1)}>
-          count is {count}
-        </button>
-        <p>
-          Edit <code>src/App.jsx</code> and save to test HMR
-        </p>
-      </div>
-      <p className="read-the-docs">
-        Click on the Vite and React logos to learn more
-      </p>
-    </>
-  )
-}
+    <Router>
+      <Routes>
+        {/* 1. DEFAULT ROUTE (/)
+           This forces the Registration Form to show up immediately 
+           when you open the app (http://localhost:5173/).
+        */}
+        <Route path="/" element={<VendorRegister />} />
 
-export default App
+        {/* 2. SPECIFIC ROUTE 
+           Keeps the URL structure clean if you navigate manually.
+        */}
+        <Route path="/vendor/register" element={<VendorRegister />} />
+
+        {/* 3. SUPPORTING ROUTES
+           These prevent the app from breaking when you click 
+           "Login" or complete the registration form.
+        */}
+        <Route path="/vendor/login" element={<LoginPlaceholder />} />
+        <Route path="/vendor/dashboard" element={<DashboardPlaceholder />} />
+        
+      </Routes>
+    </Router>
+  );
+};
+
+export default App;
