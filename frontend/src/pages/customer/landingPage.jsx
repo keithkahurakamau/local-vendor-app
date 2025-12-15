@@ -1,5 +1,5 @@
 import React, {useState} from 'react';
-import { FiUser} from 'react-icons/fi';
+import {  FiSearch, FiMapPin} from 'react-icons/fi';
 import { BiRestaurant } from 'react-icons/bi';
 
 const LandingPage = () => {
@@ -148,9 +148,50 @@ const LandingPage = () => {
         </div>
 
         {/* Search Bar */}
-        
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 -mt-8 relative z-10">
+            {/*search card container*/}
+            <div className="bg-white rounded-card shadow-card-hover p-6">
+                {/*search input wrapper */}
+                <div className="flex flex-col md:flex-row gap-4">
 
-        {/* Popular Categories */}
+                    <div className="flex-1 relative">
+                    <FiSearch className="absolute left-4 top-1/2 transform -translate-y-1/2 text-text-lighter text-xl" />
+                    {/*search input field */}
+                    <input
+                        type="text"
+                        placeholder="Search for food (e.g. Pilau), location, or vendor..."
+                        className="w-full pl-12 pr-4 py-3 bg-neutral-200 border border-neutral rounded-button focus:outline-none focus:ring-2 focus:ring-primary text-text"
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                    />
+                    </div>
+                    {/*location/distance filter button */}
+                    <button className="flex items-center justify-center space-x-2 px-6 py-3 bg-neutral-100 border border-neutral rounded-button hover:bg-background-gray transition text-text">
+                    <FiMapPin className="text-accent" />
+                    <span>Find within 5km radius</span>
+                    </button>
+
+                </div>
+
+                {/* Popular Categories */}
+                <div className="flex items-center flex-wrap gap-3 mt-4">
+                    {/*loop through popular foods */}
+                    {popularCategories.map((category) => (
+                        <button
+                            key={category}
+                            className={`px-4 py-2 rounded-full border transition ${
+                            activeTab === category.toLowerCase()
+                                ? 'bg-primary text-white border-primary'
+                                : 'bg-white text-text border-neutral hover:border-primary'
+                            }`}
+                        >
+                            {category}
+                        </button>
+                    ))}
+                </div>
+            </div>
+        </div>
+        
         {/*Nearby Vendors Section */}
         {/*How it works section */}
         {/*Vendor reach section */}
