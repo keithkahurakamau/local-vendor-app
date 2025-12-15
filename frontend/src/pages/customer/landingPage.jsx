@@ -1,16 +1,18 @@
-import React, {useState} from 'react';
+import React, {useState, useMemo} from 'react';
 import {  FiSearch, FiMapPin, FiShoppingCart, FiStar, FiClock, FiTruck} from 'react-icons/fi';
 import { BiRestaurant } from 'react-icons/bi';
 
 const LandingPage = () => {
     const [searchQuery, setSearchQuery] = useState('');
-    const [activeTab, setActiveTab] = useState('popular');
-
+    //currently selected food category
+    const [activeCategory, setActiveCategory] = useState('all');
+    //list of categories displayed as filter buttons
     const popularCategories = [
-        'Nyama Choma',
-        'Pilau',
-        'Chapati',
-        'Ugali Fish'
+    { id: 'all', name: 'All' },
+    { id: 'nyama-choma', name: 'Nyama Choma' },
+    { id: 'pilau', name: 'Pilau' },
+    { id: 'chapati', name: 'Chapati' },
+    { id: 'ugali-fish', name: 'Ugali Fish' }
     ];
 
     //mock data
@@ -20,10 +22,12 @@ const LandingPage = () => {
         name: 'Mama Oliech Restaurant',
         image: 'https://media.istockphoto.com/id/1464175219/photo/tilapia-stew-ugali-and-sukuma-wiki-kenyan-food.jpg?s=170667a&w=0&k=20&c=dAc7aGsqQjQES90FBy7a71QjfNMN6pZJJI7sx8QK5-M=',
         rating: 4.5,
-        cuisine: 'Whole Tilapia, Ugali, Keshokheri, Omena',
-        distance: '1.2 km',
+        cuisine: 'Whole Tilapia, Nyama Choma, Omena',
+        categories: ['ugali-fish','nyama-choma', 'chapati'],
+        distance: 1.2,
         updated: '5h ago',
-        status: 'Open'
+        status: 'Open',
+        location: 'Nairobi'
     },
     {
         id: 2,
@@ -31,9 +35,11 @@ const LandingPage = () => {
         image: 'https://images.unsplash.com/photo-1634324092536-74480096b939?fm=jpg&q=60&w=3000&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8cGlsYXV8ZW58MHx8MHx8fDA%3D',
         rating: 4.5,
         cuisine: 'Biryani, Pilau, Mahamri, Chai',
-        distance: '2.5 km',
+        categories: ['pilau'],
+        distance: 2.5,
         updated: '20m ago',
-        status: null
+        status: null,
+        location: 'Westlands'
     },
     {
         id: 3,
@@ -41,19 +47,23 @@ const LandingPage = () => {
         image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=600',
         rating: 4.7,
         cuisine: 'BBQ Meat, Chicken Tikka, Terrific Tuesday',
-        distance: '2.8 km',
+        categories: ['pizza'],
+        distance: 2.8,
         updated: '1h ago',
-        status: null
+        status: 'Open',
+        location: 'Westlands'
     },
     {
         id: 4,
         name: 'Kilele Nyama',
         image: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=600',
         rating: 4.7,
-        cuisine: 'Mbui Choma, Wet Fry, Mukimo',
-        distance: '3.1 km',
+        cuisine: 'Mbuzi Choma, Nyama Choma, Wet Fry, Mukimo',
+        categories: ['nyama-choma', 'Mukimo'],
+        distance: 3.1,
         updated: '3h ago',
-        status: null
+        status: null,
+        location: 'Kilimani'
     },
     {
         id: 5,
@@ -61,9 +71,11 @@ const LandingPage = () => {
         image: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=600',
         rating: 4.9,
         cuisine: 'Avocado Salad, Smoothies, Wraps',
-        distance: '1.5 km',
+        categories: ['smoothies'],
+        distance: 1.5,
         updated: '19h ago',
-        status: null
+        status: 'Healthy',
+        location: 'Parklands'
     },
     {
         id: 6,
@@ -71,12 +83,44 @@ const LandingPage = () => {
         image: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=600',
         rating: 4.6,
         cuisine: 'Coffee, Burgers, Breakfast, Cakes',
-        distance: '0.9 km',
+        categories: ['coffee'],
+        distance: 0.9,
         updated: 'just now',
-        status: null
+        status: null,
+        location: 'CBD'
     }
     ];
 
+    // filter vendors based on search text, category(location filter to be added later)
+    const filteredVendors = useMemo(() => {
+        return vendors.filter(vendor => {
+        
+        // Filter by category
+        if (activeCategory !== 'all' && !vendor.categories.includes(activeCategory)) return false;
+
+        // Filter by search query, search across name, cuisine, location
+        if (searchQuery.trim()) {
+            const query = searchQuery.toLowerCase();
+            const searchableText = `${vendor.name} ${vendor.cuisine} ${vendor.location}`.toLowerCase();
+            return searchableText.includes(query);
+        }
+        //if no filters block the vendor, include it
+        return true;
+        });
+    }, [searchQuery, activeCategory]);
+
+
+    //clears all filters and resets page to default state
+    const handleClearSearch = () => {
+        setSearchQuery('');
+        setActiveCategory('all');
+    };
+    //update active category when a category button is clicked
+    const handleCategoryClick = (categoryId) => {
+        setActiveCategory(categoryId);
+    };
+
+    
     return(
         <div className="min-h-screen bg-background w-full">
         {/*Navbar*/}
@@ -170,17 +214,42 @@ const LandingPage = () => {
                     {/*loop through popular foods */}
                     {popularCategories.map((category) => (
                         <button
-                            key={category}
+                            key={category.id}
+                            onClick={() => handleCategoryClick(category.id)}
                             className={`px-4 py-2 rounded-full border transition ${
-                            activeTab === category.toLowerCase()
+                            activeCategory === category.id
                                 ? 'bg-primary text-white border-primary'
                                 : 'bg-white text-text border-neutral hover:border-primary'
                             }`}
                         >
-                            {category}
+                            {category.name}
                         </button>
                     ))}
                 </div>
+                {/*display active filters */}
+                {(searchQuery || activeCategory !== 'all') && (
+                <div className="mt-4 flex items-center gap-2 text-sm text-text-light">
+                <span className="font-medium">Active filters:</span>
+                {searchQuery && (
+                    <span className="bg-background-gray px-3 py-1 rounded-full">
+                    Search: "{searchQuery}"
+                    </span>
+                )}
+                {activeCategory !== 'all' && (
+                    <span className="bg-background-gray px-3 py-1 rounded-full">
+                    Category: {popularCategories.find(c => c.id === activeCategory)?.name}
+                    </span>
+                )}
+                
+                <button
+                    onClick={handleClearSearch}
+                    className="text-primary hover:text-primary-dark font-medium ml-2"
+                >
+                    Clear all
+                </button>
+                </div>
+            )}
+
             </div>
         </div>
         
@@ -192,6 +261,9 @@ const LandingPage = () => {
                 <div>
                     <h2 className="text-3xl font-bold text-text font-display">Nearby Vendors</h2>
                     <p className="text-text-light mt-1">Discover local favorites around Nairobi</p>
+                    <p className="text-text-light mt-1">
+                    {filteredVendors.length === 0 ? 'No vendors found matching your criteria' : `Showing ${filteredVendors.length} vendor${filteredVendors.length !== 1 ? 's' : ''}`}
+            </p>
                 </div>
 
                 {/*location update and view toggle */}
@@ -209,10 +281,11 @@ const LandingPage = () => {
                     </div>
                 </div>
             </div>
+
             {/*vendor cards grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                 {/*loop through vendors */}
-                {vendors.map((vendor) => (
+                {filteredVendors.map((vendor) => (
                     <div key={vendor.id} className="bg-white rounded-card shadow-card overflow-hidden hover:shadow-card-hover transition-all duration-300 group">
                         {/*vendor image */}
                         <div className="relative h-48 overflow-hidden">
@@ -224,13 +297,15 @@ const LandingPage = () => {
                             {/*vendor status badge */}
                             {vendor.status && (
                             <div className={`absolute top-4 right-4 px-3 py-1 rounded-full text-sm font-medium ${
-                                vendor.status === 'Open' ? 'bg-success text-white' :
-                                'bg-accent text-white'
+                            vendor.status === 'Open' ? 'bg-success text-white' :
+                            vendor.status === 'Closed' ? 'bg-warning text-white' :
+                            'bg-accent text-white'
                             }`}>
-                                {vendor.status}
+                            {vendor.status}
                             </div>
                             )}
                         </div>
+
                         {/*vendor details */}
                         <div className="p-5">
                             {/*vendor name and rating */}
