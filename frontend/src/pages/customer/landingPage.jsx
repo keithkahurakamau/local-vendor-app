@@ -108,7 +108,48 @@ const LandingPage = () => {
         </nav>
 
         {/* Hero Section */}
+        <div 
+            className="relative h-[500px] bg-cover bg-center"
+            //apply dark overlay to background image for better text visibility
+            style={{
+            backgroundImage: `linear-gradient(rgba(0, 0, 0, 0.6), rgba(0, 0, 0, 0.6)), 
+            url('/images/hero2.jpg')`
+            }}
+        >
+            {/* Overlay content */}
+            <div className="absolute inset-0 flex flex-col items-center justify-center text-center px-4">
+                {/*credibility badge */}
+                <div className="bg-secondary text-text px-4 py-2 rounded-full mb-6 font-medium">
+                    ⭐ #1 Food Delivery in Nairobi
+                </div>
+                {/*main headline */}
+                <h1 className="text-5xl md:text-6xl font-bold text-white mb-4 font-display">
+                    Authentic Kenyan Flavors,
+                </h1>
+                {/*continuation of headline but highlighted */}
+                <h1 className="text-5xl md:text-6xl font-bold text-primary mb-6 font-display">
+                    Delivered Fast.
+                </h1>
+                {/*subheading */}
+                <p className="text-white text-lg md:text-xl mb-8 max-w-2xl">
+                    From sizzling Nyama Choma to spicy Pilau. Order from top-rated local vendors and enjoy a feast in minutes.
+                </p>
+                {/* Call-to-action buttons */}
+                <div className="flex space-x-4">
+                    <button className="bg-primary text-white px-8 py-3 rounded-button hover:bg-primary-dark transition font-medium text-lg">
+                    Order Now
+                    </button>
+                    <button className="bg-text text-white px-8 py-3 rounded-button hover:bg-text-light transition font-medium text-lg">
+                    View Vendors
+                    </button>
+                </div>
+
+            </div>
+        </div>
+
         {/* Search Bar */}
+        
+
         {/* Popular Categories */}
         {/*Nearby Vendors Section */}
         {/*How it works section */}
