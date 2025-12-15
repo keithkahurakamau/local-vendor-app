@@ -1,5 +1,5 @@
 // src/pages/PaymentDetails.jsx
-import React from "react";
+import React, { useState } from "react";
 
 // Simple Card components defined locally
 function Card({ children, className = "" }) {
@@ -21,6 +21,19 @@ function CardContent({ children, className = "" }) {
 }
 
 export default function PaymentDetails() {
+  const [loading, setLoading] = useState(false);
+
+  const handlePayment = () => {
+    alert("Initiating STK push"); // Alert when button is clicked
+    setLoading(true);             // Show loading spinner
+
+    // Simulate payment process delay (e.g., 3 seconds)
+    setTimeout(() => {
+      setLoading(false);
+      alert("Payment process completed"); // Optional completion alert
+    }, 3000);
+  };
+
   return (
     <div
       className="min-h-screen flex items-center justify-center p-4"
@@ -51,7 +64,7 @@ export default function PaymentDetails() {
               <div>
                 <p className="font-medium">Paying</p>
                 <p className="text-sm" style={{ color: "#118AB2" }}>
-                  Vendor name • Vendor distance
+                  Vendor name • Vendor distance • Time stamp
                 </p>
               </div>
             </CardContent>
@@ -81,10 +94,27 @@ export default function PaymentDetails() {
           {/* Actions */}
           <div className="space-y-3">
             <button
+              onClick={handlePayment}
               className="w-full py-2 rounded-2xl font-medium"
               style={{ backgroundColor: "#FF6B35", color: "#FFFFFF" }}
+              disabled={loading} // Disable button while loading
             >
-              Initiate Payment
+              {loading ? (
+                <span
+                  className="spinner"
+                  style={{
+                    display: "inline-block",
+                    width: "1rem",
+                    height: "1rem",
+                    border: "3px solid #fff",
+                    borderTop: "3px solid transparent",
+                    borderRadius: "50%",
+                    animation: "spin 1s linear infinite",
+                  }}
+                ></span>
+              ) : (
+                "Initiate Payment"
+              )}
             </button>
 
             <button
@@ -100,6 +130,16 @@ export default function PaymentDetails() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Spinner CSS */}
+      <style>
+        {`
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+          }
+        `}
+      </style>
     </div>
   );
 }
