@@ -1,9 +1,12 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, Loader2, Eye, EyeOff, ShieldCheck } from 'lucide-react';
+import { authService } from '../../services/authService';
+import { AuthContext } from '../../context/AuthContext';
 
 const AdminLogin = () => {
   const navigate = useNavigate();
+  const { adminLogin } = useContext(AuthContext);
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -15,12 +18,11 @@ const AdminLogin = () => {
     setError(null);
 
     try {
-      if (!formData.email || !formData.password) throw new Error("Credentials required");
-      // Simulate API
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const response = await authService.adminLogin(formData.email, formData.password);
+      adminLogin(response.access_token);
       navigate('/admin/dashboard');
     } catch (err) {
-      setError("Invalid admin credentials");
+      setError(err.message);
     } finally {
       setIsLoading(false);
     }
@@ -110,7 +112,7 @@ const AdminLogin = () => {
             {isLoading ? (
               <div className="flex items-center">
                 <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />
-                Accessing System...
+                Accessing Admin dashboard...
               </div>
             ) : (
               'Sign In'

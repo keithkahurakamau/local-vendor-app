@@ -1,26 +1,72 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import { Mail, Lock, Loader2, Eye, EyeOff, Store, MapPin } from 'lucide-react';
+import { authService } from '../../services/authService';
+import { AuthContext } from '../../context/AuthContext';
 
 const VendorLogin = () => {
   const navigate = useNavigate();
+  const { vendorLogin } = useContext(AuthContext);
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [isLoading, setIsLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [showPassword, setShowPassword] = useState(true);
   const [error, setError] = useState(null);
+  const [passwordErrors, setPasswordErrors] = useState([]);
+
+  // Password validation function
+  const validatePassword = (password) => {
+    const errors = [];
+
+    if (password.length < 8) {
+      errors.push('At least 8 characters');
+    }
+    if (!/[A-Z]/.test(password)) {
+      errors.push('One uppercase letter');
+    }
+    if (!/[a-z]/.test(password)) {
+      errors.push('One lowercase letter');
+    }
+    if (!/\d/.test(password)) {
+      errors.push('One number');
+    }
+    if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>?]/.test(password)) {
+      errors.push('One special character');
+    }
+
+    return errors;
+  };
+
+  // Handle password change with validation
+  const handlePasswordChange = (e) => {
+    const newPassword = e.target.value;
+    setFormData({...formData, password: newPassword});
+
+    // Validate password and update errors
+    const errors = validatePassword(newPassword);
+    setPasswordErrors(errors);
+  };
+
+  // Check if password is valid
+  const isPasswordValid = passwordErrors.length === 0 && formData.password.length > 0;
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
     setError(null);
 
+    // Additional validation before submission
+    if (!isPasswordValid) {
+      setError('Please ensure your password meets all requirements.');
+      setIsLoading(false);
+      return;
+    }
+
     try {
-      if (!formData.email || !formData.password) throw new Error("Credentials required");
-      // Simulate API
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      const response = await authService.vendorLogin(formData.email, formData.password);
+      vendorLogin(response.access_token);
       navigate('/vendor/dashboard');
     } catch (err) {
-      setError("Invalid email or password");
+      setError(err.message);
     } finally {
       setIsLoading(false);
     }
@@ -90,7 +136,7 @@ const VendorLogin = () => {
                 className="block w-full pl-10 pr-10 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors outline-none"
                 placeholder="••••••••"
                 value={formData.password}
-                onChange={(e) => setFormData({...formData, password: e.target.value})}
+                onChange={handlePasswordChange}
               />
               <button
                 type="button"
@@ -100,6 +146,28 @@ const VendorLogin = () => {
                 {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
               </button>
             </div>
+
+            {/* Password Requirements */}
+            {passwordErrors.length > 0 && formData.password.length > 0 && (
+              <div className="mt-2 text-xs text-red-600">
+                <p className="font-medium mb-1">Password must contain:</p>
+                <ul className="list-disc list-inside space-y-1">
+                  {passwordErrors.map((error, index) => (
+                    <li key={index}>{error}</li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {/* Password Valid Indicator */}
+            {isPasswordValid && (
+              <div className="mt-2 text-xs text-green-600 flex items-center">
+                <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+                Password meets all requirements
+              </div>
+            )}
           </div>
 
           {/* Remember Me & Forgot Password */}
