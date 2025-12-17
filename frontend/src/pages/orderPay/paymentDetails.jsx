@@ -1,5 +1,6 @@
 // src/pages/PaymentDetails.jsx
 import React, { useState } from "react";
+import { useLocation, useNavigate } from 'react-router-dom';
 
 // Simple Card components defined locally
 function Card({ children, className = "" }) {
@@ -22,6 +23,11 @@ function CardContent({ children, className = "" }) {
 
 export default function PaymentDetails() {
   const [loading, setLoading] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  // Read data passed from Order Page
+  const { cart = [], total = 0, vendor = {}, landmark = '' } = location.state || {};
 
   const handlePayment = () => {
     alert("Initiating STK push"); // Alert when button is clicked
@@ -47,8 +53,9 @@ export default function PaymentDetails() {
             <CardContent className="text-center space-y-2">
               <h2 className="text-lg font-semibold">Complete your order</h2>
               <p className="text-sm">
-                Total price: <strong>KES XXXX</strong>
+                Total price: <strong>KES {total}</strong>
               </p>
+              {landmark && <p className="text-xs text-gray-500">Deliver to: {landmark}</p>}
             </CardContent>
           </Card>
 
@@ -59,12 +66,12 @@ export default function PaymentDetails() {
                 className="w-16 h-16 rounded-xl flex items-center justify-center text-xs font-medium"
                 style={{ backgroundColor: "#FFD166" }}
               >
-                Vendor
+                {vendor.name ? vendor.name.split(' ')[0] : 'Vendor'}
               </div>
               <div>
                 <p className="font-medium">Paying</p>
                 <p className="text-sm" style={{ color: "#118AB2" }}>
-                  Vendor name • Vendor distance • Time stamp
+                  {vendor.name || 'Vendor name'} • {vendor.distance || ''} • {vendor.lastSeen || ''}
                 </p>
               </div>
             </CardContent>
@@ -88,11 +95,28 @@ export default function PaymentDetails() {
                 className="w-full px-3 py-2 rounded-xl focus:outline-none"
                 style={{ border: "1px solid #E0E0E0" }}
               />
+
+              {/* Order Summary Items */}
+              <div className="mt-2 text-sm">
+                <p className="font-medium mb-2">Order items</p>
+                {cart.length === 0 ? (
+                  <p className="text-gray-400">No items</p>
+                ) : (
+                  <ul className="space-y-1">
+                    {cart.map((it) => (
+                      <li key={it.id} className="flex justify-between">
+                        <span>{it.name} x{it.qty}</span>
+                        <span>KES {it.price * it.qty}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             </CardContent>
           </Card>
 
           {/* Actions */}
-          <div className="space-y-3">
+            <div className="space-y-3">
             <button
               onClick={handlePayment}
               className="w-full py-2 rounded-2xl font-medium"
@@ -124,6 +148,7 @@ export default function PaymentDetails() {
                 color: "#EF476F",
                 border: "1px solid #E0E0E0",
               }}
+                onClick={() => navigate(-1)}
             >
               Cancel
             </button>

@@ -1,6 +1,6 @@
 from flask import Flask
 from app.config import config
-from app.extensions import db, cors
+from app.extensions import db, cors, jwt
 
 
 def create_app(config_name='development'):
@@ -9,6 +9,7 @@ def create_app(config_name='development'):
     
     db.init_app(app)
     cors.init_app(app)
+    jwt.init_app(app)
     
     from app.routes import customer_routes, admin_routes, auth_routes, vendor_routes
     
