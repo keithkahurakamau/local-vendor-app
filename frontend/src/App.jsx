@@ -1,6 +1,7 @@
 import React from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
+import { LocationProvider } from './context/LocationContext';
 
 // Admin pages
 import AdminLogin from './pages/admin/AdminLogin';
@@ -26,6 +27,7 @@ import 'leaflet/dist/leaflet.css';
 function App() {
   return (
     <AuthProvider>
+      <LocationProvider>
         <Routes>
           {/* Default route - customer landing page */}
           <Route path="/" element={<LandingPage />} />
@@ -40,7 +42,7 @@ function App() {
           <Route path="/vendor/register" element={<VendorRegister />} />
 
           {/* Customer routes */}
-          <Route path="/customer/map" element={<MapPage />} />
+          <Route path="/customer/mapPage" element={<MapPage />} />
 
           {/* Order/Payment routes */}
           <Route path="/order" element={<OrderPage />} />
@@ -48,6 +50,7 @@ function App() {
            {/* Orders View Page */}
           <Route path="/orders" element={<OrdersView />} />
         </Routes>
+      </LocationProvider>
     </AuthProvider>
   );
 }
