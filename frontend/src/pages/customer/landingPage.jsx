@@ -1,11 +1,52 @@
-import React, {useState, useMemo} from 'react';
+
+
+
+
+
+
+import React, {useState, useMemo, useEffect} from 'react';
+import { useNavigate } from 'react-router-dom';
 import {  FiSearch, FiMapPin, FiShoppingCart, FiStar, FiClock, FiTruck} from 'react-icons/fi';
 import { BiRestaurant } from 'react-icons/bi';
+import { useGeoLocation } from '../../hooks/useGeoLocation';
+import { useLocation } from '../../context/LocationContext';
+import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
+import L from 'leaflet';
+
+// Fix Leaflet Icons
+import icon from 'leaflet/dist/images/marker-icon.png';
+import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+let DefaultIcon = L.icon({
+    iconUrl: icon,
+    shadowUrl: iconShadow,
+    iconSize: [25, 41],
+    iconAnchor: [12, 41]
+});
+L.Marker.prototype.options.icon = DefaultIcon;
+
+
+
 
 const LandingPage = () => {
+    const navigate = useNavigate();
+
+    const { location: userLocation, error: locationError, loading: locationLoading, getCurrentLocation } = useGeoLocation();
+    const { updateLocation } = useLocation();
+    
     const [searchQuery, setSearchQuery] = useState('');
     //currently selected food category
     const [activeCategory, setActiveCategory] = useState('all');
+    //currently selected view (list or map)
+    const [viewMode, setViewMode] = useState('list');
+
+    //location-based filtering
+    const [locationFilter, setLocationFilter] = useState(false);
+    const [searchRadius, setSearchRadius] = useState(5000); // 5km in meters
+
+    // State for location loading and error
+    const [isLocationLoading, setIsLocationLoading] = useState(false);
+    const [localLocationError, setLocalLocationError] = useState(null);
+
     //list of categories displayed as filter buttons
     const popularCategories = [
     { id: 'all', name: 'All' },
@@ -15,7 +56,33 @@ const LandingPage = () => {
     { id: 'ugali-fish', name: 'Ugali Fish' }
     ];
 
-    //mock data
+    // Calculate distance between two coordinates using Haversine formula
+    const calculateDistance = (lat1, lon1, lat2, lon2) => {
+        const R = 6371e3; // Earth's radius in meters
+        const φ1 = lat1 * Math.PI / 180;
+        const φ2 = lat2 * Math.PI / 180;
+        const Δφ = (lat2 - lat1) * Math.PI / 180;
+        const Δλ = (lon2 - lon1) * Math.PI / 180;
+
+        const a = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+                Math.cos(φ1) * Math.cos(φ2) *
+                Math.sin(Δλ/2) * Math.sin(Δλ/2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+
+        return R * c; // Distance in meters
+    };
+
+
+    // Format distance for display
+    const formatDistance = (meters) => {
+        if (meters < 1000) {
+            return `${Math.round(meters)}m`;
+        }
+        return `${(meters / 1000).toFixed(1)}km`;
+    };
+
+
+    //mock data with coordinates for map - moved before useMemo to avoid temporal dead zone
     const vendors = [
         {
         id: 1,
@@ -27,7 +94,8 @@ const LandingPage = () => {
         distance: 1.2,
         updated: '5h ago',
         status: 'Open',
-        location: 'Nairobi'
+        location: 'Nairobi',
+        coordinates: [-1.2921, 36.8219]
     },
     {
         id: 2,
@@ -39,7 +107,8 @@ const LandingPage = () => {
         distance: 2.5,
         updated: '20m ago',
         status: null,
-        location: 'Westlands'
+        location: 'Westlands',
+        coordinates: [-1.2634, 36.8103]
     },
     {
         id: 3,
@@ -51,7 +120,8 @@ const LandingPage = () => {
         distance: 2.8,
         updated: '1h ago',
         status: 'Open',
-        location: 'Westlands'
+        location: 'Westlands',
+        coordinates: [-1.2642, 36.8086]
     },
     {
         id: 4,
@@ -63,7 +133,8 @@ const LandingPage = () => {
         distance: 3.1,
         updated: '3h ago',
         status: null,
-        location: 'Kilimani'
+        location: 'Kilimani',
+        coordinates: [-1.2986, 36.8412]
     },
     {
         id: 5,
@@ -75,7 +146,8 @@ const LandingPage = () => {
         distance: 1.5,
         updated: '19h ago',
         status: 'Healthy',
-        location: 'Parklands'
+        location: 'Parklands',
+        coordinates: [-1.2418, 36.8645]
     },
     {
         id: 6,
@@ -87,27 +159,71 @@ const LandingPage = () => {
         distance: 0.9,
         updated: 'just now',
         status: null,
-        location: 'CBD'
+        location: 'CBD',
+        coordinates: [-1.2921, 36.8219]
     }
     ];
 
-    // filter vendors based on search text, category(location filter to be added later)
-    const filteredVendors = useMemo(() => {
-        return vendors.filter(vendor => {
-        
-        // Filter by category
-        if (activeCategory !== 'all' && !vendor.categories.includes(activeCategory)) return false;
-
-        // Filter by search query, search across name, cuisine, location
-        if (searchQuery.trim()) {
-            const query = searchQuery.toLowerCase();
-            const searchableText = `${vendor.name} ${vendor.cuisine} ${vendor.location}`.toLowerCase();
-            return searchableText.includes(query);
+    // Update location context when user location changes
+    useEffect(() => {
+        if (userLocation) {
+            updateLocation(userLocation.lat, userLocation.lon);
         }
-        //if no filters block the vendor, include it
-        return true;
+    }, [userLocation, updateLocation]);
+
+    // Calculate real distances and filter vendors based on location
+    const vendorsWithRealDistance = useMemo(() => {
+        if (!userLocation) return vendors;
+
+        return vendors.map(vendor => {
+            const distance = calculateDistance(
+                userLocation.lat, 
+                userLocation.lon, 
+                vendor.coordinates[0], 
+                vendor.coordinates[1]
+            );
+            return {
+                ...vendor,
+                calculatedDistance: distance,
+                calculatedDistanceDisplay: formatDistance(distance)
+            };
         });
-    }, [searchQuery, activeCategory]);
+    }, [userLocation]);
+
+    // Filter vendors including location-based filtering
+    const filteredVendors = useMemo(() => {
+        let filtered = vendorsWithRealDistance.filter(vendor => {
+            // Filter by category
+            if (activeCategory !== 'all' && !vendor.categories.includes(activeCategory)) return false;
+
+            // Filter by search query, search across name, cuisine, location
+            if (searchQuery.trim()) {
+                const query = searchQuery.toLowerCase();
+                const searchableText = `${vendor.name} ${vendor.cuisine} ${vendor.location}`.toLowerCase();
+                if (!searchableText.includes(query)) return false;
+            }
+
+            // Filter by location if location filter is enabled
+            if (locationFilter && vendor.calculatedDistance && vendor.calculatedDistance > searchRadius) {
+                return false;
+            }
+
+            return true;
+        });
+
+        // Sort by distance if user location is available
+        if (userLocation) {
+            filtered.sort((a, b) => {
+                const distanceA = a.calculatedDistance || Infinity;
+                const distanceB = b.calculatedDistance || Infinity;
+                return distanceA - distanceB;
+            });
+        }
+
+        return filtered;
+    }, [searchQuery, activeCategory, locationFilter, searchRadius, userLocation, vendorsWithRealDistance]);
+
+
 
 
     //clears all filters and resets page to default state
@@ -115,9 +231,25 @@ const LandingPage = () => {
         setSearchQuery('');
         setActiveCategory('all');
     };
+
     //update active category when a category button is clicked
     const handleCategoryClick = (categoryId) => {
         setActiveCategory(categoryId);
+    };
+
+    // Handle update location button click
+    const handleUpdateLocation = async () => {
+        setIsLocationLoading(true);
+        setLocalLocationError(null);
+        
+        try {
+            await getCurrentLocation();
+        } catch (error) {
+            console.error('Failed to get location:', error);
+            setLocalLocationError('Failed to get your location. Please try again.');
+        } finally {
+            setIsLocationLoading(false);
+        }
     };
 
     
@@ -136,8 +268,13 @@ const LandingPage = () => {
                     </div>
                     {/* Navigation buttons */}
                     <div className="flex items-center space-x-4">
+
+
                         {/* Vendor login button */}
-                        <button className="flex items-center bg-primary space-x-2 text-white hover:text-text transition">
+                        <button 
+                            onClick={() => navigate('/vendor/login')}
+                            className="flex items-center bg-orange-500 hover:bg-orange-600 space-x-2 text-white font-semibold px-6 py-2 rounded-lg shadow-md hover:shadow-lg transform hover:scale-105 transition-all duration-200"
+                        >
                             <BiRestaurant className="text-xl" />
                             <span className="hidden sm:inline">Vendor Login</span>
                         </button>
@@ -268,78 +405,175 @@ const LandingPage = () => {
 
                 {/*location update and view toggle */}
                 <div className="flex items-center space-x-4">
+
                     {/*update user location button */}
-                    <button className="flex items-center space-x-2 border-accent bg-background text-accent hover:text-accent-dark transition">
-                    <FiMapPin />
-                    <span>Update Location</span>
+                    <button 
+                        onClick={handleUpdateLocation}
+                        disabled={isLocationLoading}
+                        className="flex items-center space-x-2 border-accent bg-background text-accent hover:text-accent-dark transition disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                        <FiMapPin className={isLocationLoading ? 'animate-pulse' : ''} />
+                        <span>{isLocationLoading ? 'Updating...' : 'Update Location'}</span>
                     </button>
+
 
                     {/* toggle between list and map*/}
                     <div className="flex space-x-2">
-                    <button className="px-4 py-2 bg-primary text-white rounded-button">List</button>
-                    <button className="px-4 py-2 border border-primary-light bg-background text-primary rounded-button hover:text-accent bg-background-gray">Map</button>
+                    <button 
+                        onClick={() => setViewMode('list')}
+                        className={`px-4 py-2 rounded-button transition ${viewMode === 'list' ? 'bg-primary text-white' : 'border border-primary-light bg-background text-primary hover:text-accent bg-background-gray'}`}
+                    >
+                        List
+                    </button>
+                    <button 
+                        onClick={() => setViewMode('map')}
+                        className={`px-4 py-2 rounded-button transition ${viewMode === 'map' ? 'bg-primary text-white' : 'border border-primary-light bg-background text-primary hover:text-accent bg-background-gray'}`}
+                    >
+                        Map
+                    </button>
                     </div>
                 </div>
             </div>
 
-            {/*vendor cards grid */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {/*loop through vendors */}
-                {filteredVendors.map((vendor) => (
-                    <div key={vendor.id} className="bg-white rounded-card shadow-card overflow-hidden hover:shadow-card-hover transition-all duration-300 group">
-                        {/*vendor image */}
-                        <div className="relative h-48 overflow-hidden">
-                            <img
-                            src={vendor.image}
-                            alt={vendor.name}
-                            className="w-full h-full object-cover group-hover:scale-110 transition duration-300"
+
+            {/* Conditional rendering based on view mode */}
+            {viewMode === 'list' ? (
+                /* List View */
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {/*loop through vendors */}
+                    {filteredVendors.map((vendor) => (
+                        <div key={vendor.id} className="bg-white rounded-card shadow-card overflow-hidden hover:shadow-card-hover transition-all duration-300 group">
+                            {/*vendor image */}
+                            <div className="relative h-48 overflow-hidden">
+                                <img
+                                src={vendor.image}
+                                alt={vendor.name}
+                                className="w-full h-full object-cover group-hover:scale-110 transition duration-300"
+                                />
+                                {/*vendor status badge */}
+                                {vendor.status && (
+                                <div className={`absolute top-4 right-4 px-3 py-1 rounded-full text-sm font-medium ${
+                                vendor.status === 'Open' ? 'bg-success text-white' :
+                                vendor.status === 'Closed' ? 'bg-warning text-white' :
+                                'bg-accent text-white'
+                                }`}>
+                                {vendor.status}
+                                </div>
+                                )}
+                            </div>
+
+                            {/*vendor details */}
+                            <div className="p-5">
+                                {/*vendor name and rating */}
+                                <div className="flex justify-between items-start mb-2">
+                                    <h3 className="text-xl font-bold text-text">{vendor.name}</h3>
+
+                                    <div className="flex items-center space-x-1 bg-secondary px-2 py-1 rounded-button">
+                                        <FiStar className="text-primary" />
+                                        <span className="font-semibold text-text">{vendor.rating}</span>
+                                    </div>
+                                </div>
+                                {/*vendor cuisine */}
+                                <p className="text-text-light text-sm mb-3">{vendor.cuisine}</p>
+
+                                {/*vendor distance and last updated */}
+                                <div className="flex items-center justify-between text-sm text-text-lighter mb-4">
+                                    <div className="flex items-center space-x-1">
+                                        <FiMapPin className="text-accent" />
+                                        <span>{userLocation && vendor.calculatedDistanceDisplay ? vendor.calculatedDistanceDisplay : vendor.distance}</span>
+                                    </div>
+                                    {/*Last updated time */}
+                                    <div className="flex items-center space-x-1">
+                                        <FiClock />
+                                        <span>Updated {vendor.updated}</span>
+                                    </div>
+                                </div>
+
+                                {/*order button */}
+                                <button 
+                                    onClick={() => navigate(`/order?vendor=${vendor.id}`)}
+                                    className="w-full bg-primary text-white py-3 rounded-button hover:bg-primary-dark transition font-medium flex items-center justify-center space-x-2"
+                                >
+                                    <FiShoppingCart />
+                                    <span>Order Now</span>
+                                </button>
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            ) : (
+                /* Map View */
+                <div className="bg-white rounded-card shadow-card overflow-hidden">
+                    <div className="h-96 w-full">
+                        <MapContainer 
+                            center={[-1.2921, 36.8219]} 
+                            zoom={12} 
+                            style={{ height: '100%', width: '100%' }}
+                            className="rounded-card"
+                        >
+                            <TileLayer 
+                                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                             />
-                            {/*vendor status badge */}
-                            {vendor.status && (
-                            <div className={`absolute top-4 right-4 px-3 py-1 rounded-full text-sm font-medium ${
-                            vendor.status === 'Open' ? 'bg-success text-white' :
-                            vendor.status === 'Closed' ? 'bg-warning text-white' :
-                            'bg-accent text-white'
-                            }`}>
-                            {vendor.status}
-                            </div>
-                            )}
-                        </div>
+                            {/* Render markers for filtered vendors */}
+                            {filteredVendors.map((vendor) => (
+                                <Marker 
+                                    key={vendor.id} 
+                                    position={vendor.coordinates}
+                                >
+                                    <Popup className="custom-popup">
+                                        <div className="p-2 min-w-[200px]">
+                                            {/* Vendor image and basic info */}
+                                            <div className="flex items-center gap-3 mb-3">
+                                                <img 
+                                                    src={vendor.image} 
+                                                    alt={vendor.name}
+                                                    className="w-12 h-12 rounded-lg object-cover"
+                                                />
+                                                <div>
+                                                    <h4 className="font-bold text-text">{vendor.name}</h4>
+                                                    <div className="flex items-center gap-1">
+                                                        <FiStar className="text-primary h-3 w-3" />
+                                                        <span className="text-sm text-text-light">{vendor.rating}</span>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            
+                                            {/* Vendor cuisine */}
+                                            <p className="text-sm text-text-light mb-2">{vendor.cuisine}</p>
+                                            
+                                            {/* Vendor status and distance */}
+                                            <div className="flex items-center justify-between mb-3">
+                                                <span className={`text-xs px-2 py-1 rounded-full ${
+                                                    vendor.status === 'Open' ? 'bg-success text-white' :
+                                                    vendor.status === 'Closed' ? 'bg-warning text-white' :
+                                                    'bg-accent text-white'
+                                                }`}>
+                                                    {vendor.status || 'Status Unknown'}
+                                                </span>
 
-                        {/*vendor details */}
-                        <div className="p-5">
-                            {/*vendor name and rating */}
-                            <div className="flex justify-between items-start mb-2">
-                                <h3 className="text-xl font-bold text-text">{vendor.name}</h3>
-
-                                <div className="flex items-center space-x-1 bg-secondary px-2 py-1 rounded-button">
-                                    <FiStar className="text-primary" />
-                                    <span className="font-semibold text-text">{vendor.rating}</span>
-                                </div>
-                            </div>
-                            {/*vendor cuisine */}
-                            <p className="text-text-light text-sm mb-3">{vendor.cuisine}</p>
-                            {/*vendor distance and last updated */}
-                            <div className="flex items-center justify-between text-sm text-text-lighter mb-4">
-                                <div className="flex items-center space-x-1">
-                                    <FiMapPin className="text-accent" />
-                                    <span>{vendor.distance}</span>
-                                </div>
-                                {/*Last updated time */}
-                                <div className="flex items-center space-x-1">
-                                    <FiClock />
-                                    <span>Updated {vendor.updated}</span>
-                                </div>
-                            </div>
-                            {/*order button */}
-                            <button className="w-full bg-primary text-white py-3 rounded-button hover:bg-primary-dark transition font-medium flex items-center justify-center space-x-2">
-                                <FiShoppingCart />
-                                <span>Order Now</span>
-                            </button>
-                        </div>
+                                                <span className="text-xs text-text-light flex items-center gap-1">
+                                                    <FiMapPin className="h-3 w-3" />
+                                                    {userLocation && vendor.calculatedDistanceDisplay ? vendor.calculatedDistanceDisplay : vendor.distance}
+                                                </span>
+                                            </div>
+                                            
+                                            {/* Order button */}
+                                            <button 
+                                                onClick={() => navigate(`/order?vendor=${vendor.id}`)}
+                                                className="w-full bg-primary text-white py-2 rounded-button hover:bg-primary-dark transition font-medium flex items-center justify-center space-x-2 text-sm"
+                                            >
+                                                <FiShoppingCart className="h-3 w-3" />
+                                                <span>Order Now</span>
+                                            </button>
+                                        </div>
+                                    </Popup>
+                                </Marker>
+                            ))}
+                        </MapContainer>
                     </div>
-                ))}
-            </div>
+                </div>
+            )}
         </div>
 
         {/*How it works section */}
@@ -383,8 +617,12 @@ const LandingPage = () => {
                 <p className="text-white text-lg mb-8">
                     Expand your reach and serve more customers by listing your restaurant on ChakulaExpress.
                 </p>
+
                 {/*should navigate to vendor login/registration */}
-                <button className="bg-white text-primary px-8 py-4 rounded-button hover:bg-background-gray transition font-bold text-lg flex items-center justify-center mx-auto space-x-2">
+                <button 
+                    onClick={() => navigate('/vendor/register')}
+                    className="bg-white text-primary px-8 py-4 rounded-button hover:bg-background-gray transition font-bold text-lg flex items-center justify-center mx-auto space-x-2"
+                >
                     <BiRestaurant className="text-2xl" />
                     <span>Start Selling Today</span>
                 </button>
