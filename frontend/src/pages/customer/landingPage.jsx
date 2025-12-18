@@ -261,6 +261,21 @@ const LandingPage = () => {
         setActiveCategory(categoryId);
     };
 
+    // Handle update location button click
+    const handleUpdateLocation = async () => {
+        setIsLocationLoading(true);
+        setLocalLocationError(null);
+        
+        try {
+            await getCurrentLocation();
+        } catch (error) {
+            console.error('Failed to get location:', error);
+            setLocalLocationError('Failed to get your location. Please try again.');
+        } finally {
+            setIsLocationLoading(false);
+        }
+    };
+
     
     return(
         <div className="min-h-screen bg-background w-full">
@@ -277,6 +292,8 @@ const LandingPage = () => {
                     </div>
                     {/* Navigation buttons */}
                     <div className="flex items-center space-x-4">
+
+
                         {/* Vendor login button */}
                         <button 
                             onClick={() => navigate('/vendor/login')}
@@ -428,6 +445,7 @@ const LandingPage = () => {
 
                 {/*location update and view toggle */}
                 <div className="flex items-center space-x-4">
+
                     {/*update user location button */}
                     <button
                         onClick={handleUpdateLocation}
@@ -440,6 +458,7 @@ const LandingPage = () => {
                         <FiMapPin />
                         <span>{locationEnabled ? 'Location Enabled' : geoLoading ? 'Getting Location...' : 'Update Location'}</span>
                     </button>
+
 
                     {/* toggle between list and map*/}
                     <div className="relative flex bg-background-gray rounded-button p-1">
@@ -695,6 +714,7 @@ const LandingPage = () => {
                 <p className="text-text text-lg mb-8">
                     Expand your reach and serve more customers by listing your restaurant on ChakulaExpress.
                 </p>
+
                 {/*should navigate to vendor login/registration */}
                 <button 
                         onClick={() => navigate('/vendor/register')}
