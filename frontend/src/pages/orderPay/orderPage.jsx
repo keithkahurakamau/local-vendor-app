@@ -1,18 +1,121 @@
-import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+
+import React, { useState, useMemo } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { MapPin, Clock, Plus, Minus, ShoppingBag, Trash2, Star, Flame, ChefHat, ArrowRight } from 'lucide-react';
 
+
 const OrderPage = () => {
-  // --- MOCK DATA ---
-  const vendor = {
-    id: 1,
-    name: "Mama Otis Smokies & Chapo",
-    image: "https://images.unsplash.com/photo-1567129937968-cdad8f07e2f8?q=80&w=300&h=200&fit=crop",
-    distance: "0.5 km away",
-    lastSeen: "10 mins ago",
-    rating: 4.8,
-    reviews: 156
-  };
+  const [searchParams] = useSearchParams();
+  const vendorIdFromUrl = searchParams.get('vendor');
+  
+
+  // --- VENDOR DATA (matching landing page) ---
+  const allVendors = [
+    {
+      id: 1,
+      name: 'Mama Oliech Restaurant',
+      image: 'https://media.istockphoto.com/id/1464175219/photo/tilapia-stew-ugali-and-sukuma-wiki-kenyan-food.jpg?s=170667a&w=0&k=20&c=dAc7aGsqQjQES90FBy7a71QjfNMN6pZJJI7sx8QK5-M=',
+      rating: 4.5,
+      cuisine: 'Whole Tilapia, Nyama Choma, Omena',
+      categories: ['ugali-fish','nyama-choma', 'chapati'],
+      distance: 1.2,
+      updated: '5h ago',
+      status: 'Open',
+      location: 'Nairobi',
+      coordinates: [-1.2921, 36.8219]
+    },
+    {
+      id: 2,
+      name: 'Swahili Plate',
+      image: 'https://images.unsplash.com/photo-1634324092536-74480096b939?fm=jpg&q=60&w=3000&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxzZWFyY2h8Mnx8cGlsYXV8ZW58MHx8MHx8fDA%3D',
+      rating: 4.5,
+      cuisine: 'Biryani, Pilau, Mahamri, Chai',
+      categories: ['pilau'],
+      distance: 2.5,
+      updated: '20m ago',
+      status: null,
+      location: 'Westlands',
+      coordinates: [-1.2634, 36.8103]
+    },
+    {
+      id: 3,
+      name: 'Pizza Inn Westlands',
+      image: 'https://images.unsplash.com/photo-1513104890138-7c749659a591?w=600',
+      rating: 4.7,
+      cuisine: 'BBQ Meat, Chicken Tikka, Terrific Tuesday',
+      categories: ['pizza'],
+      distance: 2.8,
+      updated: '1h ago',
+      status: 'Open',
+      location: 'Westlands',
+      coordinates: [-1.2642, 36.8086]
+    },
+    {
+      id: 4,
+      name: 'Kilele Nyama',
+      image: 'https://images.unsplash.com/photo-1555939594-58d7cb561ad1?w=600',
+      rating: 4.7,
+      cuisine: 'Mbuzi Choma, Nyama Choma, Wet Fry, Mukimo',
+      categories: ['nyama-choma', 'Mukimo'],
+      distance: 3.1,
+      updated: '3h ago',
+      status: null,
+      location: 'Kilimani',
+      coordinates: [-1.2986, 36.8412]
+    },
+    {
+      id: 5,
+      name: 'Green Bowl',
+      image: 'https://images.unsplash.com/photo-1512621776951-a57141f2eefd?w=600',
+      rating: 4.9,
+      cuisine: 'Avocado Salad, Smoothies, Wraps',
+      categories: ['smoothies'],
+      distance: 1.5,
+      updated: '19h ago',
+      status: 'Healthy',
+      location: 'Parklands',
+      coordinates: [-1.2418, 36.8645]
+    },
+    {
+      id: 6,
+      name: 'Java House',
+      image: 'https://images.unsplash.com/photo-1554118811-1e0d58224f24?w=600',
+      rating: 4.6,
+      cuisine: 'Coffee, Burgers, Breakfast, Cakes',
+      categories: ['coffee'],
+      distance: 0.9,
+      updated: 'just now',
+      status: null,
+      location: 'CBD',
+      coordinates: [-1.2921, 36.8219]
+    }
+  ];
+
+  // Get vendor from URL parameter or use default
+  const vendor = useMemo(() => {
+    if (vendorIdFromUrl) {
+      const foundVendor = allVendors.find(v => v.id === parseInt(vendorIdFromUrl));
+      if (foundVendor) {
+        return {
+          ...foundVendor,
+
+          distance: `${foundVendor.distance} km away`,
+          lastSeen: foundVendor.updated,
+          reviews: 150 // Fixed reviews count for demo
+        };
+      }
+    }
+    // Default fallback
+    return {
+      id: 1,
+      name: "Mama Otis Smokies & Chapo",
+      image: "https://images.unsplash.com/photo-1567129937968-cdad8f07e2f8?q=80&w=300&h=200&fit=crop",
+      distance: "0.5 km away",
+      lastSeen: "10 mins ago",
+      rating: 4.8,
+      reviews: 156
+    };
+  }, [vendorIdFromUrl]);
 
   const menuItems = [
     { 

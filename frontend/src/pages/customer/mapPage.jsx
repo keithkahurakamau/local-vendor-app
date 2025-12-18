@@ -141,9 +141,10 @@ function MapPage() {
     }
   };
 
+
   // Navigate to order page
   const handleOrderClick = (vendor) => {
-    navigate('/customer/order', { 
+    navigate(`/order?vendor=${vendor.id}`, { 
       state: { 
         vendor,
         userLocation 
