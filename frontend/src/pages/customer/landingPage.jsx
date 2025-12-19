@@ -261,22 +261,6 @@ const LandingPage = () => {
         setActiveCategory(categoryId);
     };
 
-    // Handle update location button click
-    const handleUpdateLocation = async () => {
-        setIsLocationLoading(true);
-        setLocalLocationError(null);
-        
-        try {
-            await getCurrentLocation();
-        } catch (error) {
-            console.error('Failed to get location:', error);
-            setLocalLocationError('Failed to get your location. Please try again.');
-        } finally {
-            setIsLocationLoading(false);
-        }
-    };
-
-    
     return(
         <div className="min-h-screen bg-background w-full">
         {/*Navbar*/}
