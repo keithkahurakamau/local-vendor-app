@@ -116,11 +116,11 @@ export default function PaymentDetails() {
           </Card>
 
           {/* Actions */}
-            <div className="space-y-3">
+          <div className="space-y-3">
             <button
               onClick={handlePayment}
               className="w-full py-2 rounded-2xl font-medium"
-              style={{ backgroundColor: "#FF6B35", color: "#FFFFFF" }}
+              style={{ backgroundColor: "#10B981", color: "#FFFFFF" }}
               disabled={loading} // Disable button while loading
             >
               {loading ? (
@@ -148,7 +148,7 @@ export default function PaymentDetails() {
                 color: "#EF476F",
                 border: "1px solid #E0E0E0",
               }}
-                onClick={() => navigate(-1)}
+              onClick={() => navigate(-1)}
             >
               Cancel
             </button>

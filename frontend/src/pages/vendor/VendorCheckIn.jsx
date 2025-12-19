@@ -122,9 +122,15 @@ const VendorCheckIn = () => {
            </div>
            <span className="font-bold text-gray-900 hidden sm:block">Hyper-Local Vendor</span>
         </div>
-        <button onClick={() => navigate('/vendor/login')} className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-red-600">
-          <LogOut className="h-4 w-4" /> Logout
-        </button>
+
+        <div className="flex items-center gap-3">
+          <button onClick={() => navigate('/orders')} className="flex items-center gap-2 text-sm font-medium text-orange-600 hover:text-orange-700 hover:bg-orange-50 px-3 py-2 rounded-lg transition-colors">
+            <ShoppingBag className="h-4 w-4" /> View Orders
+          </button>
+          <button onClick={() => navigate('/vendor/login')} className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg transition-colors">
+            <LogOut className="h-4 w-4" /> Logout
+          </button>
+        </div>
       </nav>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-8 space-y-8">
@@ -256,8 +262,18 @@ const VendorCheckIn = () => {
           </div>
         </section>
 
-        {/* Broadcast Button */}
-        <div className="pb-10">
+
+        {/* Action Buttons */}
+        <div className="pb-10 space-y-4">
+          {/* View Orders Button */}
+          <button 
+            onClick={() => navigate('/orders')} 
+            className="w-full py-4 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-2xl font-bold text-lg border-2 border-orange-200 hover:border-orange-300 transition-all duration-300 flex items-center justify-center gap-3"
+          >
+            <ShoppingBag className="h-6 w-6" /> View Orders
+          </button>
+
+          {/* Broadcast Button */}
           <button onClick={handleBroadcast} disabled={isBroadcasting} className="w-full py-5 bg-gray-900 hover:bg-orange-600 text-white rounded-2xl font-bold text-lg shadow-xl hover:shadow-2xl transition-all duration-300 flex items-center justify-center gap-3">
             {isBroadcasting ? <><Loader2 className="h-6 w-6 animate-spin" /> Broadcasting...</> : <><Save className="h-6 w-6" /> Broadcast Location & Menu</>}
           </button>
