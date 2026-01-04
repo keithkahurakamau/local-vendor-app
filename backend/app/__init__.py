@@ -1,6 +1,7 @@
 from flask import Flask
 from app.config import config
 from app.extensions import db, cors, jwt
+from app.routes.mpesa_routes import mpesa_bp
 
 
 def create_app(config_name='development'):
@@ -17,6 +18,7 @@ def create_app(config_name='development'):
     app.register_blueprint(admin_routes.bp)
     app.register_blueprint(auth_routes.bp)
     app.register_blueprint(vendor_routes.bp)
+    app.register_blueprint(mpesa_bp)
     
     with app.app_context():
         db.create_all()
