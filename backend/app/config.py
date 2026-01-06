@@ -1,15 +1,17 @@
 
 import os
 from dotenv import load_dotenv
+from pathlib import Path
 
 # Load environment variables from .env file
-# The .env file should be in the same directory as this config.py file
-load_dotenv()
+# The .env file is located in the parent directory (backend/.env)
+env_path = Path(__file__).parent.parent / '.env'
+load_dotenv(dotenv_path=env_path)
 
 class Config:
-    SECRET_KEY = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
-    JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'dev-jwt-secret-key-change-in-production')
-    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL', 'sqlite:///app.db')
+    SECRET_KEY = os.getenv('SECRET_KEY', '')
+    JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', '')
+    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL', '')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ECHO = True
 
