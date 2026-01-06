@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
  * Custom hook to get user's current geolocation
  * Returns location object with lat, lon and any errors
  */
-export const useGeoLocation = () => {
+export const useGeoLocation = (updateLocation) => {
   const [location, setLocation] = useState(null);
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);

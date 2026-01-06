@@ -1,4 +1,3 @@
-
 import { createContext, useContext, useState, useCallback } from 'react';
 
 // Create context
@@ -7,7 +6,6 @@ const LocationContext = createContext();
 // Provider component
 export const LocationProvider = ({ children }) => {
   const [userLocation, setUserLocation] = useState(null);
-
 
   const updateLocation = useCallback((lat, lon) => {
     setUserLocation({ lat, lon });
