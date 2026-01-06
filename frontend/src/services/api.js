@@ -27,7 +27,7 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 || error.response?.status === 422) {
       // Token expired or invalid, clear token and redirect to login
       localStorage.removeItem('adminToken');
       localStorage.removeItem('vendorToken');
@@ -36,5 +36,10 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+export const customerAPI = {
+  getVendors: (params) => api.get('/api/customer/vendors', { params }),
+  searchVendors: (params) => api.get('/api/customer/search', { params }),
+};
 
 export default api;

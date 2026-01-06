@@ -22,7 +22,7 @@ const AdminLogin = () => {
       adminLogin(response.access_token);
       navigate('/admin/dashboard');
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Login failed. Please check your credentials.');
     } finally {
       setIsLoading(false);
     }

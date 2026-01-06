@@ -12,6 +12,7 @@ const VendorLogin = () => {
   const [showPassword, setShowPassword] = useState(true);
   const [error, setError] = useState(null);
   const [passwordErrors, setPasswordErrors] = useState([]);
+  const [rememberMe, setRememberMe] = useState(false);
 
   // Password validation function
   const validatePassword = (password) => {
@@ -64,9 +65,17 @@ const VendorLogin = () => {
     try {
       const response = await authService.vendorLogin(formData.email, formData.password);
       vendorLogin(response.access_token);
+
+      // Handle remember me functionality
+      if (rememberMe) {
+        localStorage.setItem('vendorEmail', formData.email);
+      } else {
+        localStorage.removeItem('vendorEmail');
+      }
+
       navigate('/vendor/dashboard');
     } catch (err) {
-      setError(err.message);
+      setError(err.message || 'Login failed. Please check your credentials.');
     } finally {
       setIsLoading(false);
     }
@@ -85,9 +94,9 @@ const VendorLogin = () => {
             <Store className="h-8 w-8 text-white" />
           </div>
           <h2 className="text-2xl font-bold text-gray-900">Vendor Portal</h2>
-          <div className="flex items-center justify-center gap-1 mt-2 text-sm text-gray-500">
-            <MapPin className="h-3 w-3" />
-            <span>Login to refresh your 5km radius</span>
+          <div className="flex items-center justify-center gap-2 mt-3 text-base font-semibold text-orange-700">
+            <MapPin className="h-5 w-5" />
+            <span>Login to refresh your status</span>
           </div>
         </div>
 
@@ -143,7 +152,7 @@ const VendorLogin = () => {
                 onClick={() => setShowPassword(!showPassword)}
                 className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-orange-600 cursor-pointer"
               >
-                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                {showPassword ? <Eye className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}
               </button>
             </div>
 
@@ -177,6 +186,8 @@ const VendorLogin = () => {
                 id="remember-me"
                 name="remember-me"
                 type="checkbox"
+                checked={rememberMe}
+                onChange={(e) => setRememberMe(e.target.checked)}
                 className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded cursor-pointer"
               />
               <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-600 cursor-pointer">

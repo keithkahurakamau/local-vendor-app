@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { 
-  Store, User, Mail, Phone, Upload, Lock, 
-  Loader2, Eye, EyeOff, MapPin, Crosshair, Navigation, AlertCircle, CheckCircle 
+import {
+  Store, User, Mail, Phone, Upload, Lock,
+  Loader2, Eye, EyeOff, MapPin, Crosshair, Navigation, AlertCircle, CheckCircle
 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
+import { authService } from '../../services/authService';
 
 // Fix for Leaflet default marker icons
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -164,12 +165,30 @@ const VendorRegister = () => {
       setIsLoading(false);
       return;
     }
-    
-    // Simulate API
-    setTimeout(() => {
+
+    if (formData.password !== formData.confirmPassword) {
+      alert("Passwords do not match.");
       setIsLoading(false);
-      navigate('/vendor/dashboard');
-    }, 2000);
+      return;
+    }
+
+    try {
+      await authService.vendorRegister(
+        formData.email,
+        formData.phone,
+        formData.password,
+        formData.businessName
+      );
+
+      // Registration successful
+      alert("Registration successful! Please login to continue.");
+      navigate('/vendor/login');
+    } catch (error) {
+      console.error('Registration error:', error);
+      alert(error.message || "Registration failed. Please try again.");
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -440,15 +459,24 @@ const VendorRegister = () => {
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-2">Confirm Password</label>
-                  <input
-                    type={showPassword ? 'text' : 'password'}
-                    name="confirmPassword"
-                    required
-                    placeholder="••••••••"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-orange-500 outline-none"
-                    value={formData.confirmPassword}
-                    onChange={handleChange}
-                  />
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      name="confirmPassword"
+                      required
+                      placeholder="••••••••"
+                      className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-orange-500 outline-none"
+                      value={formData.confirmPassword}
+                      onChange={handleChange}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-orange-600"
+                    >
+                      {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
+                  </div>
                 </div>
               </div>
             </section>
