@@ -562,6 +562,60 @@ const LandingPage = () => {
                                 </div>
                             </div>
                         </div>
+                        </Popup>
+                    </Marker>
+                    ))}
+                </MapContainer>
+                </div>
+
+                {/* Floating Vendor Cards */}
+                {filteredVendors.length > 0 && (
+                <div className="absolute bottom-4 left-0 right-0 z-[1000] overflow-x-auto px-4">
+                    <div className="flex gap-4 pb-2">
+                    {filteredVendors.slice(0, 3).map((vendor) => (
+                        <div
+                        key={vendor.id}
+                        className={`flex-shrink-0 w-80 bg-white rounded-lg shadow-lg p-4 cursor-pointer transition-all ${
+                            selectedVendor?.id === vendor.id ? 'ring-2 ring-primary' : ''
+                        }`}
+                        onClick={() => setSelectedVendor(vendor)}>
+                        <div className="w-full h-32 bg-gray-200 rounded-lg mb-3 overflow-hidden">
+                            <img src={vendor.image} alt={vendor.name} className="w-full h-full object-cover" />
+                        </div>
+
+                        <h3 className="font-bold text-lg mb-1">{vendor.name}</h3>
+                        <p className="text-sm text-gray-600 mb-2">
+                            {vendor.distance ? `${vendor.distance}km away` : 'Nearby'} • {vendor.updated}
+                        </p>
+
+                        <div className="mb-3">
+                            <p className="text-xs text-gray-500 mb-1">Available items:</p>
+                            <div className="flex flex-wrap gap-1">
+                            {vendor.categories.slice(0, 3).map((item, idx) => (
+                                <span key={idx} className="text-xs bg-gray-100 px-2 py-1 rounded">
+                                {item}
+                                </span>
+                            ))}
+                            {vendor.categories.length > 3 && (
+                                <span className="text-xs text-gray-500">
+                                +{vendor.categories.length - 3} more
+                                </span>
+                            )}
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={(e) => {
+                            e.stopPropagation();
+                            navigate('/customer/order', { 
+                                state: { vendor, userLocation: contextLocation } 
+                            });
+                            }}
+                            className="w-full py-2 bg-primary text-white rounded-button hover:bg-primary-dark transition">
+                            Order Now
+                        </button>
+                        </div>
+                    ))}
                     </div>
                 )}
             </div>
