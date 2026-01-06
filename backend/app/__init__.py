@@ -12,7 +12,7 @@ def create_app(config_name='development'):
     
     # 1. Initialize Extensions
     db.init_app(app)
-    cors.init_app(app, origins=["http://localhost:5173"])
+    cors.init_app(app, origins=["http://localhost:5173", "http://127.0.0.1:5173"], supports_credentials=True)
     jwt.init_app(app)
     migrate.init_app(app, db)  # <--- This fixes "No such command 'db'"
     
