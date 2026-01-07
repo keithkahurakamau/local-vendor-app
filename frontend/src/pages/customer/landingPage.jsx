@@ -1,16 +1,16 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
-import { FiSearch, FiMapPin, FiShoppingCart, FiStar, FiClock, FiTruck, FiGrid, FiMap, FiArrowRight, FiInstagram, FiTwitter, FiFacebook, FiNavigation, FiList, FiAlertCircle } from 'react-icons/fi';
+import { FiSearch, FiMapPin, FiShoppingCart, FiStar, FiClock, FiTruck, FiGrid, FiMap, FiArrowRight, FiInstagram, FiTwitter, FiFacebook, FiNavigation, FiAlertCircle } from 'react-icons/fi';
 import { BiStore } from 'react-icons/bi';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { customerAPI } from '../../services/api'; // Keep your existing API import if needed
+import { customerAPI } from '../../services/api';
 import { useLocation } from '../../context/LocationContext';
 import { useGeoLocation } from '../../hooks/useGeoLocation';
 import mapService from '../../services/mapService';
 
-// --- Draggable Marker Component (From MapPage) ---
+// --- Draggable Marker Component ---
 const DraggableMarker = ({ position, setPosition, onDragEnd }) => {
   useMapEvents({
     click(e) {
@@ -30,7 +30,7 @@ const DraggableMarker = ({ position, setPosition, onDragEnd }) => {
           if (onDragEnd) onDragEnd(newPos.lat, newPos.lng);
         }
       }}
-      icon={userIcon} // Explicitly using userIcon here
+      icon={userIcon}
     />
   ) : null;
 };
@@ -71,7 +71,7 @@ const LandingPage = () => {
     const [activeCategory, setActiveCategory] = useState('all');
     const [viewMode, setViewMode] = useState('grid');
     const [vendors, setVendors] = useState([]);
-    const [selectedVendor, setSelectedVendor] = useState(null); // Added for Map selection
+    const [selectedVendor, setSelectedVendor] = useState(null);
     const [loading, setLoading] = useState(true);
     const [locationLoading, setLocationLoading] = useState(false);
     
@@ -79,7 +79,7 @@ const LandingPage = () => {
     const [mapCenter, setMapCenter] = useState([ -1.2864, 36.8172 ]);
     const [manualLocation, setManualLocation] = useState(null);
     const [radius] = useState(5000); // Default 5km
-    const [visibleVendorsCount, setVisibleVendorsCount] = useState(3); // For responsive map cards
+    const [visibleVendorsCount, setVisibleVendorsCount] = useState(3);
     
     const [error, setError] = useState(null);
     const [searchLoading, setSearchLoading] = useState(false);
@@ -96,7 +96,7 @@ const LandingPage = () => {
         { id: 'pizza', name: 'Pizza' }
     ];
 
-    // --- HELPERS (From MapPage) ---
+    // --- HELPERS ---
     const calculateVisibleVendors = useCallback(() => {
         let cardWidth;
         if (window.innerWidth < 640) cardWidth = 280; 
@@ -134,7 +134,6 @@ const LandingPage = () => {
         return () => window.removeEventListener('resize', updateVisibleCount);
     }, [calculateVisibleVendors]);
 
-    // Initial load logic
     useEffect(() => {
         const fetchVendors = async () => {
             try {
@@ -152,7 +151,6 @@ const LandingPage = () => {
                 }
             } catch (error) {
                 console.error('Error fetching vendors:', error);
-                // Fallback
                 try {
                     const response = await customerAPI.getVendors();
                     setVendors(response.data.vendors);
@@ -167,7 +165,6 @@ const LandingPage = () => {
 
 
     // --- ACTION HANDLERS ---
-
     const handleCategoryClick = (id) => setActiveCategory(id);
     const handleClearSearch = () => { setSearchQuery(''); setActiveCategory('all'); };
 
@@ -176,7 +173,6 @@ const LandingPage = () => {
         setViewMode(mode);
     };
 
-    // Robust Near Me Logic (From MapPage)
     const handleFindNearby = async () => {
         setLocationLoading(true);
         setError(null);
@@ -193,7 +189,6 @@ const LandingPage = () => {
                     }
                     setMapCenter([latitude, longitude]);
                     
-                    // Fetch vendors
                     const response = await mapService.getNearbyVendors(latitude, longitude, radius);
                     if (response.success) setVendors(response.vendors);
                     setLocationLoading(false);
@@ -211,7 +206,6 @@ const LandingPage = () => {
         }
     };
 
-    // Drag Logic (From MapPage)
     const handleDragEnd = async (lat, lng) => {
         setManualLocation({ lat, lng });
         setMapCenter([lat, lng]);
@@ -264,14 +258,10 @@ const LandingPage = () => {
         }
     };
 
-    // Logic to filter the vendors based on categories/search (Grid View Only)
-    // Note: Map view usually shows all results from API, filtering grid separately is fine
     const filteredVendors = useMemo(() => {
         return vendors.filter(vendor => {
             if (activeCategory !== 'all' && !vendor.categories?.includes(activeCategory)) return false;
-            // Additional client-side text filtering if needed
             if (searchQuery.trim() && vendors.length > 0 && !loading) {
-                 // Simple check if API didn't already filter it
                  const query = searchQuery.toLowerCase();
                  const text = `${vendor.name} ${vendor.cuisine} ${vendor.location}`.toLowerCase();
                  return text.includes(query);
@@ -359,7 +349,6 @@ const LandingPage = () => {
                             )}
                         </button>
                         
-                        {/* Enhanced Near Me Button */}
                         <button
                             onClick={handleFindNearby}
                             disabled={locationLoading}
@@ -479,7 +468,7 @@ const LandingPage = () => {
                         </div>
                     )
                 ) : (
-                    /* --- MAP VIEW (ENHANCED with MapPage Functionality) --- */
+                    /* --- MAP VIEW (FIXED) --- */
                     <div className="bg-white rounded-2xl shadow-xl border border-gray-100 overflow-hidden relative">
                         <div className="h-[700px] relative w-full">
                             <MapContainer
@@ -516,7 +505,21 @@ const LandingPage = () => {
                                 ))}
                             </MapContainer>
 
-                            {/* Floating Vendor Cards (The "MapPage" Feature) */}
+                            {/* Legend Overlay */}
+                            <div className="absolute top-4 right-4 bg-white/90 backdrop-blur rounded-lg shadow-lg p-3 z-[400]">
+                                <div className="space-y-2">
+                                    <div className="flex items-center gap-2 text-sm">
+                                        <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
+                                        <span>You (Drag to move)</span>
+                                    </div>
+                                    <div className="flex items-center gap-2 text-sm">
+                                        <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
+                                        <span>Vendors</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Floating Vendor Cards */}
                             {vendors.length > 0 && (
                                 <div className="absolute bottom-4 left-0 right-0 z-[400] overflow-x-auto px-4 pb-2 no-scrollbar">
                                     <div className="flex gap-4 w-max mx-auto md:mx-0">
@@ -547,75 +550,7 @@ const LandingPage = () => {
                                     </div>
                                 </div>
                             )}
-
-                            {/* Legend */}
-                            <div className="absolute top-4 right-4 bg-white/90 backdrop-blur rounded-lg shadow-lg p-3 z-[400]">
-                                <div className="space-y-2">
-                                    <div className="flex items-center gap-2 text-sm">
-                                        <div className="w-3 h-3 bg-blue-500 rounded-full"></div>
-                                        <span>You (Drag to move)</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 text-sm">
-                                        <div className="w-3 h-3 bg-orange-500 rounded-full"></div>
-                                        <span>Vendors</span>
-                                    </div>
-                                </div>
-                            </div>
                         </div>
-                        </Popup>
-                    </Marker>
-                    ))}
-                </MapContainer>
-                </div>
-
-                {/* Floating Vendor Cards */}
-                {filteredVendors.length > 0 && (
-                <div className="absolute bottom-4 left-0 right-0 z-[1000] overflow-x-auto px-4">
-                    <div className="flex gap-4 pb-2">
-                    {filteredVendors.slice(0, 3).map((vendor) => (
-                        <div
-                        key={vendor.id}
-                        className={`flex-shrink-0 w-80 bg-white rounded-lg shadow-lg p-4 cursor-pointer transition-all ${
-                            selectedVendor?.id === vendor.id ? 'ring-2 ring-primary' : ''
-                        }`}
-                        onClick={() => setSelectedVendor(vendor)}>
-                        <div className="w-full h-32 bg-gray-200 rounded-lg mb-3 overflow-hidden">
-                            <img src={vendor.image} alt={vendor.name} className="w-full h-full object-cover" />
-                        </div>
-
-                        <h3 className="font-bold text-lg mb-1">{vendor.name}</h3>
-                        <p className="text-sm text-gray-600 mb-2">
-                            {vendor.distance ? `${vendor.distance}km away` : 'Nearby'} • {vendor.updated}
-                        </p>
-
-                        <div className="mb-3">
-                            <p className="text-xs text-gray-500 mb-1">Available items:</p>
-                            <div className="flex flex-wrap gap-1">
-                            {vendor.categories.slice(0, 3).map((item, idx) => (
-                                <span key={idx} className="text-xs bg-gray-100 px-2 py-1 rounded">
-                                {item}
-                                </span>
-                            ))}
-                            {vendor.categories.length > 3 && (
-                                <span className="text-xs text-gray-500">
-                                +{vendor.categories.length - 3} more
-                                </span>
-                            )}
-                            </div>
-                        </div>
-
-                        <button
-                            onClick={(e) => {
-                            e.stopPropagation();
-                            navigate('/customer/order', { 
-                                state: { vendor, userLocation: contextLocation } 
-                            });
-                            }}
-                            className="w-full py-2 bg-primary text-white rounded-button hover:bg-primary-dark transition">
-                            Order Now
-                        </button>
-                        </div>
-                    ))}
                     </div>
                 )}
             </div>
