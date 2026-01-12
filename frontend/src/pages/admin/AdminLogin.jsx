@@ -2,11 +2,15 @@ import React, { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Mail, Lock, Loader2, Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { authService } from '../../services/authService';
-import { AuthContext } from '../../context/AuthContext';
+// Ensure AuthContext exists, or remove this line if you haven't implemented Context yet
+import { AuthContext } from '../../context/AuthContext'; 
 
 const AdminLogin = () => {
   const navigate = useNavigate();
-  const { adminLogin } = useContext(AuthContext);
+  // Safe fallback if AuthContext is not fully set up yet
+  const authContext = useContext(AuthContext);
+  const adminLoginContext = authContext?.adminLogin || (() => {}); 
+
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [isLoading, setIsLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -18,24 +22,26 @@ const AdminLogin = () => {
     setError(null);
 
     try {
+      // Call API
       const response = await authService.adminLogin(formData.email, formData.password);
-      adminLogin(response.access_token);
+      
+      // Update Context if available
+      if (response.token) {
+          adminLoginContext(response.token);
+      }
+      
       navigate('/admin/dashboard');
     } catch (err) {
-      setError(err.message || 'Login failed. Please check your credentials.');
+      console.error(err);
+      setError(err.response?.data?.error || err.message || 'Login failed.');
     } finally {
       setIsLoading(false);
     }
   };
 
   return (
-    // FULL SCREEN WRAPPER
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-orange-50 via-orange-100 to-orange-200">
-      
-      {/* LOGIN CARD */}
       <div className="w-full max-w-md bg-white p-8 sm:p-10 rounded-2xl shadow-2xl border border-white/50 mx-4">
-        
-        {/* Header */}
         <div className="text-center mb-8">
           <div className="mx-auto h-14 w-14 bg-orange-100 rounded-xl flex items-center justify-center mb-4">
             <ShieldCheck className="h-8 w-8 text-orange-600" />
@@ -46,21 +52,15 @@ const AdminLogin = () => {
           </p>
         </div>
 
-        {/* Error Alert */}
         {error && (
           <div className="mb-6 p-3 bg-red-50 border border-red-100 text-red-600 text-sm rounded-lg text-center font-medium">
             {error}
           </div>
         )}
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-6">
-          
-          {/* Email Input */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-              Email Address
-            </label>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Email Address</label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Mail className="h-5 w-5 text-gray-400" />
@@ -76,11 +76,8 @@ const AdminLogin = () => {
             </div>
           </div>
 
-          {/* Password Input */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-              Password
-            </label>
+            <label className="block text-sm font-semibold text-gray-700 mb-1.5">Password</label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                 <Lock className="h-5 w-5 text-gray-400" />
@@ -103,31 +100,14 @@ const AdminLogin = () => {
             </div>
           </div>
 
-          {/* Submit Button */}
           <button
             type="submit"
             disabled={isLoading}
             className="w-full flex justify-center py-3.5 px-4 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 disabled:opacity-70 disabled:cursor-not-allowed transition-all"
           >
-            {isLoading ? (
-              <div className="flex items-center">
-                <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />
-                Accessing Admin dashboard...
-              </div>
-            ) : (
-              'Sign In'
-            )}
+            {isLoading ? <><Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" /> Authenticating...</> : 'Sign In'}
           </button>
-
         </form>
-
-        {/* Footer */}
-        <div className="mt-6 text-center">
-          <a href="#" className="text-sm font-medium text-orange-600 hover:text-orange-500 hover:underline">
-            Forgot your secure key?
-          </a>
-        </div>
-
       </div>
     </div>
   );

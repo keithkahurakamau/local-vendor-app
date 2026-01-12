@@ -3,8 +3,95 @@ from app.utils.decorators import vendor_required
 from app.models import VendorLocation, Transaction, MenuItem
 from app.extensions import db
 from datetime import datetime, timedelta
+import cloudinary.uploader
 
 bp = Blueprint('vendor', __name__, url_prefix='/api/vendor')
+
+# --- NEW: Get Current Status ---
+@bp.route('/status', methods=['GET'])
+@vendor_required
+def get_status():
+    """
+    Get current vendor status based on the 3-hour rule.
+    """
+    from flask_jwt_extended import get_jwt_identity
+    vendor_id = get_jwt_identity()
+    
+    location = VendorLocation.query.filter_by(vendor_id=vendor_id).first()
+    
+    # Default closed if no location found
+    if not location:
+        return jsonify({'is_open': False}), 200
+        
+    # Check if manually open AND within time limit
+    is_active = False
+    remaining_seconds = 0
+    
+    if location.is_open and location.auto_close_at:
+        now = datetime.utcnow()
+        if location.auto_close_at > now:
+            is_active = True
+            remaining_seconds = (location.auto_close_at - now).total_seconds()
+        else:
+            # Time expired: Update DB to reflect closed state
+            location.is_open = False
+            location.auto_close_at = None
+            db.session.commit()
+            is_active = False
+
+    return jsonify({
+        'is_open': is_active,
+        'remaining_seconds': remaining_seconds,
+        'address': location.address,
+        'menu_items': location.menu_items
+    }), 200
+
+# --- NEW: Manual Close Endpoint ---
+@bp.route('/close', methods=['POST'])
+@vendor_required
+def close_business():
+    """Manually close the business"""
+    from flask_jwt_extended import get_jwt_identity
+    vendor_id = get_jwt_identity()
+    
+    location = VendorLocation.query.filter_by(vendor_id=vendor_id).first()
+    if location:
+        location.is_open = False
+        location.auto_close_at = None
+        db.session.commit()
+        
+    return jsonify({'success': True, 'message': 'Business closed successfully'}), 200
+
+@bp.route('/upload-image', methods=['POST'])
+def upload_image():
+    """
+    Dedicated endpoint to upload an image to Cloudinary.
+    Returns: { "url": "https://res.cloudinary.com/..." }
+    """
+    if 'file' not in request.files:
+        return jsonify({'error': 'No file part'}), 400
+        
+    file = request.files['file']
+    
+    if file.filename == '':
+        return jsonify({'error': 'No selected file'}), 400
+
+    try:
+        # Upload to Cloudinary
+        upload_result = cloudinary.uploader.upload(
+            file,
+            folder="local_vendor_app/menu_items"
+        )
+        
+        return jsonify({
+            'success': True,
+            'url': upload_result['secure_url'],
+            'public_id': upload_result['public_id']
+        }), 200
+        
+    except Exception as e:
+        print(f"Upload Error: {e}")
+        return jsonify({'error': 'Image upload failed'}), 500
 
 @bp.route('/checkin', methods=['POST'])
 @vendor_required
@@ -92,7 +179,7 @@ def get_orders():
             'mpesa_receipt_number': transaction.mpesa_receipt_number,
             'status': transaction.status,
             'created_at': transaction.created_at.isoformat(),
-            'updated_at': transaction.updated_at.isoformat()
+            'updated_at': transaction.updated_at.isoformat() if hasattr(transaction, 'updated_at') and transaction.updated_at else None
         })
 
     return jsonify({

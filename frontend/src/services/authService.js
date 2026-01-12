@@ -1,63 +1,39 @@
-import api from './api.js';
+import api from './api';
 
 export const authService = {
-  async adminLogin(email, password) {
-    try {
-      const response = await api.post('/api/auth/login', { email, password });
-      return response.data;
-    } catch (error) {
-      if (error.response) {
-        // Server responded with error status
-        throw new Error(error.response.data.error || 'Login failed');
-      } else if (error.request) {
-        // Network error
-        throw new Error('Network error. Please check your connection.');
-      } else {
-        // Other error
-        throw new Error('An unexpected error occurred.');
-      }
+  // Generic Login (Used by Vendors)
+  login: async (credentials) => {
+    const response = await api.post('/auth/login', credentials);
+    if (response.data.token) {
+      localStorage.setItem('user', JSON.stringify(response.data));
     }
+    return response.data;
   },
 
-  async vendorLogin(email, password) {
-    try {
-      const response = await api.post('/api/auth/login', { email, password });
-      return response.data;
-    } catch (error) {
-      if (error.response) {
-        // Server responded with error status
-        throw new Error(error.response.data.error || 'Login failed');
-      } else if (error.request) {
-        // Network error
-        throw new Error('Network error. Please check your connection.');
-      } else {
-        // Other error
-        throw new Error('An unexpected error occurred.');
-      }
+  // Admin Login (Wrapper for clarity, uses same endpoint usually)
+  adminLogin: async (email, password) => {
+    const response = await api.post('/auth/login', { email, password, role: 'admin' });
+    if (response.data.token) {
+      // Store specifically for admin if needed, or share 'user' key
+      localStorage.setItem('user', JSON.stringify(response.data));
     }
+    return response.data;
   },
 
-  async vendorRegister(email, phoneNumber, password, businessName) {
-    try {
-      const response = await api.post('/api/auth/register', {
-        email,
-        phone_number: phoneNumber,
-        password,
-        business_name: businessName,
-        role: 'vendor'
-      });
-      return response.data;
-    } catch (error) {
-      if (error.response) {
-        // Server responded with error status
-        throw new Error(error.response.data.error || 'Registration failed');
-      } else if (error.request) {
-        // Network error
-        throw new Error('Network error. Please check your connection.');
-      } else {
-        // Other error
-        throw new Error('An unexpected error occurred.');
-      }
+  // Registration
+  register: async (userData) => {
+    const response = await api.post('/auth/register', userData);
+    if (response.data.token) {
+      localStorage.setItem('user', JSON.stringify(response.data));
     }
+    return response.data;
+  },
+
+  logout: () => {
+    localStorage.removeItem('user');
+  },
+
+  getCurrentUser: () => {
+    return JSON.parse(localStorage.getItem('user'));
   }
 };

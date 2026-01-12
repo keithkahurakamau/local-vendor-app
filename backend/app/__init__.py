@@ -3,6 +3,7 @@ import threading
 import time
 from datetime import datetime
 from flask import Flask
+import cloudinary
 from app.config import config
 # Import migrate from extensions, DO NOT create a new one here
 from app.extensions import db, cors, jwt, migrate 
@@ -15,18 +16,25 @@ def create_app(config_name='development'):
     app.config.from_object(config[config_name])
     
     # ------------------------------------------------------------
-    # 1. Initialize Extensions with Production CORS
+    # 1. Initialize Extensions
     # ------------------------------------------------------------
     db.init_app(app)
     
     # Get the frontend URL from Render Environment Variables, or default to localhost
-    # On Render, set FRONTEND_URL to: https://your-frontend.vercel.app
     frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:5173")
     
     cors.init_app(app, origins=[frontend_url, "http://localhost:5173", "http://127.0.0.1:5173"], supports_credentials=True)
     
     jwt.init_app(app)
     migrate.init_app(app, db)
+
+    # Configure Cloudinary
+    if app.config['CLOUDINARY_CLOUD_NAME']:
+        cloudinary.config(
+            cloud_name=app.config['CLOUDINARY_CLOUD_NAME'],
+            api_key=app.config['CLOUDINARY_API_KEY'],
+            api_secret=app.config['CLOUDINARY_API_SECRET']
+        )
     
     # ------------------------------------------------------------
     # 2. Register Blueprints
@@ -37,15 +45,8 @@ def create_app(config_name='development'):
     app.register_blueprint(vendor_routes.bp)
     
     # ------------------------------------------------------------
-    # 3. Database Creation logic
+    # 3. Background Tasks
     # ------------------------------------------------------------
-    # with app.app_context():
-    #    db.create_all() 
-
-    # ------------------------------------------------------------
-    # 4. Background Tasks
-    # ------------------------------------------------------------
-    # We pass 'app' because the thread needs the application context
     start_background_tasks(app)
 
     @app.route('/')
