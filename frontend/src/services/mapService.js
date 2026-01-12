@@ -3,15 +3,11 @@ import api from './api';
 const mapService = {
   /**
    * Search for vendors near user location with specific food item
-   * @param {string} item - Food item to search for
-   * @param {number} lat - User latitude
-   * @param {number} lon - User longitude
-   * @param {number} radius - Search radius in meters (default: 5000)
-   * @returns {Promise<Array>} - List of nearby vendors
    */
   searchVendors: async (item, lat, lon, radius = 5000) => {
     try {
-      const response = await api.get('/api/customer/search', {
+      // FIX: Changed from '/api/customer/search' to '/customer/search'
+      const response = await api.get('/customer/search', {
         params: {
           item: item.trim(),
           lat,
@@ -28,14 +24,11 @@ const mapService = {
 
   /**
    * Get all vendors near user (regardless of menu)
-   * @param {number} lat - User latitude
-   * @param {number} lon - User longitude
-   * @param {number} radius - Search radius in meters (default: 5000)
-   * @returns {Promise<Array>} - List of nearby vendors
    */
   getNearbyVendors: async (lat, lon, radius = 5000) => {
     try {
-      const response = await api.get('/api/customer/nearby', {
+      // FIX: Changed from '/api/customer/nearby' to '/customer/nearby'
+      const response = await api.get('/customer/nearby', {
         params: { lat, lon, radius }
       });
       return response.data;
@@ -47,18 +40,13 @@ const mapService = {
 
   /**
    * Search for places using Nominatim (OpenStreetMap)
-   * @param {string} query - Place name to search for
-   * @returns {Promise<Array>} - List of places with coordinates
    */
   searchPlaces: async (query) => {
     try {
-      // Using native fetch here to avoid sending backend auth tokens to OSM
       const response = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&countrycodes=KE`,
         {
           headers: {
-            // REQUIRED: Nominatim policy requires a valid User-Agent to identify the app.
-            // Replace 'LocalVendorApp/1.0' with your actual app name.
             'User-Agent': 'LocalVendorApp/1.0',
             'Accept': 'application/json'
           }
@@ -85,12 +73,11 @@ const mapService = {
 
   /**
    * Get detailed information about a specific vendor
-   * @param {number|string} vendorId - Vendor ID
-   * @returns {Promise<Object>} - Vendor details
    */
   getVendorDetails: async (vendorId) => {
     try {
-      const response = await api.get(`/api/customer/vendor/${vendorId}`);
+      // FIX: Changed from '/api/customer/vendor/...' to '/customer/vendor/...'
+      const response = await api.get(`/customer/vendor/${vendorId}`);
       return response.data;
     } catch (error) {
       console.error('Error fetching vendor details:', error);
@@ -99,20 +86,16 @@ const mapService = {
   },
 
   /**
-   * Get nearby landmarks for delivery location selection
-   * @param {number} lat - User latitude
-   * @param {number} lon - User longitude
-   * @param {number} radius - Search radius in meters (default: 200)
-   * @returns {Promise<Array>} - List of nearby landmarks
+   * Get nearby landmarks
    */
   getNearbyLandmarks: async (lat, lon, radius = 200) => {
     try {
-      const response = await api.get('/api/customer/landmarks', {
+      // FIX: Changed from '/api/customer/landmarks' to '/customer/landmarks'
+      const response = await api.get('/customer/landmarks', {
         params: { lat, lon, radius }
       });
 
       if (response.data.success) {
-        // Transform backend response to match expected format
         const landmarks = response.data.landmarks.map((landmark, index) => ({
           id: index + 1,
           lat: landmark.latitude,
@@ -128,22 +111,14 @@ const mapService = {
       }
     } catch (error) {
       console.error('Error fetching nearby landmarks:', error);
-      // Return empty landmarks on error - user can still enter location manually
       return { success: false, error: error.message, landmarks: [] };
     }
   },
 
-  /**
-   * Initiate M-Pesa payment
-   * @todo Move this to a dedicated paymentService.js in future refactoring.
-   * @param {number|string} vendorId - Vendor ID
-   * @param {number} amount - Payment amount
-   * @param {string} customerPhone - Customer phone number
-   * @returns {Promise<Object>} - Payment initiation response
-   */
   initiatePayment: async (vendorId, amount, customerPhone) => {
     try {
-      const response = await api.post('/api/customer/pay', {
+      // FIX: Changed from '/api/customer/pay' to '/customer/pay'
+      const response = await api.post('/customer/pay', {
         vendor_id: vendorId,
         amount: amount,
         customer_phone: customerPhone

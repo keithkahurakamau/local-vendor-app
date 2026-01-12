@@ -1,25 +1,47 @@
 import React, { useState } from "react";
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
-  FiArrowLeft, FiShoppingCart, FiMapPin, FiClock,
-  FiTruck, FiCheck, FiSmartphone,
-  FiLock, FiShield, FiAlertCircle, FiChevronRight, FiX
+  FiArrowLeft, FiShoppingCart, FiMapPin,
+  FiShield, FiLock, FiSmartphone, FiX
 } from 'react-icons/fi';
 import { BiStore } from 'react-icons/bi';
 import mapService from '../../services/mapService';
 
-export default function PaymentDetails() {
-  const [loading, setLoading] = useState(false);
-  const [phoneNumber, setPhoneNumber] = useState("");
-  const location = useLocation();
-  const navigate = useNavigate();
+// --- SAFE IMAGE COMPONENT ---
+const VendorImage = ({ src, alt, className }) => {
+  const [hasError, setHasError] = useState(false);
 
-  // Read data passed from Order Page
+  if (hasError || !src) {
+    return (
+      <div className={`${className} bg-gray-100 flex flex-col items-center justify-center text-gray-400`}>
+        <BiStore className="text-2xl mb-1 opacity-30" />
+      </div>
+    );
+  }
+
+  return (
+    <img 
+      src={src} 
+      alt={alt} 
+      className={className}
+      onError={() => setHasError(true)}
+    />
+  );
+};
+
+export default function PaymentDetails() {
+  const navigate = useNavigate();
+  const location = useLocation();
   const { cart = [], vendor = {}, landmark = '' } = location.state || {};
 
+  const [loading, setLoading] = useState(false);
+  const [phoneNumber, setPhoneNumber] = useState("");
+  // FIX: Make delivery location editable here too
+  const [deliveryLocation, setDeliveryLocation] = useState(landmark || "");
+
   const calculateFees = () => {
-    const deliveryFee = 50;
-    const serviceFee = 20;
+    const deliveryFee = 50; 
+    const serviceFee = 20;  
     const subtotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
     const grandTotal = subtotal + deliveryFee + serviceFee;
     return { subtotal, deliveryFee, serviceFee, grandTotal };
@@ -32,6 +54,10 @@ export default function PaymentDetails() {
       alert("Please enter a valid M-Pesa phone number (e.g., 7XXXXXXXX)");
       return;
     }
+    if (!deliveryLocation.trim()) {
+      alert("Please enter a delivery location.");
+      return;
+    }
 
     setLoading(true);
 
@@ -39,17 +65,19 @@ export default function PaymentDetails() {
       const response = await mapService.initiatePayment(
         vendor.id,
         grandTotal,
-        `+254${phoneNumber}`
+        `+254${phoneNumber}`,
+        cart,
+        deliveryLocation // Send manual location to backend if supported
       );
 
-      // Payment initiated successfully
       alert("Payment initiated! Check your phone for M-Pesa prompt.");
+      
       navigate('/payment-success', {
         state: {
           amount: grandTotal,
           vendor,
           phone: `+254${phoneNumber}`,
-          orderId: response.order_id || `HL-${Date.now().toString().slice(-6)}`,
+          orderId: response.order_number || `HL-${Date.now().toString().slice(-6)}`,
           paymentResponse: response
         }
       });
@@ -83,43 +111,39 @@ export default function PaymentDetails() {
             </span>
           </div>
           
-          <div className="w-10"></div> {/* Spacer for balance */}
+          <div className="w-10"></div>
         </div>
       </nav>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* --- LEFT COLUMN: Order Summary --- */}
+        {/* --- LEFT COLUMN --- */}
         <div className="lg:col-span-2 space-y-6">
           
           {/* Vendor Card */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
             <div className="p-6 border-b border-gray-100">
               <div className="flex items-center gap-4">
-                <div className="w-16 h-16 rounded-xl overflow-hidden bg-gradient-to-br from-orange-100 to-orange-200 flex items-center justify-center">
-                  {vendor.image ? (
-                    <img src={vendor.image} alt={vendor.name} className="w-full h-full object-cover" />
-                  ) : (
-                    <BiStore className="text-orange-600 text-2xl" />
-                  )}
+                <div className="w-16 h-16 rounded-xl overflow-hidden bg-gradient-to-br from-orange-100 to-orange-200 flex-shrink-0">
+                  <VendorImage src={vendor.image} alt={vendor.name} className="w-full h-full object-cover" />
                 </div>
                 <div className="flex-1">
-                  <h2 className="text-xl font-bold text-gray-900 mb-1">{vendor.name || "Vendor Name"}</h2>
+                  <h2 className="text-xl font-bold text-gray-900 mb-1">{vendor.name || "Vendor"}</h2>
                   <div className="flex flex-wrap items-center gap-3 text-sm text-gray-500">
-                    <span className="flex items-center gap-1">
-                      <FiMapPin className="text-orange-500" /> 
-                      {vendor.distance || "0.5 km"} away
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <FiClock className="text-orange-500" /> 
-                      {vendor.lastSeen || "10 min"} ago
-                    </span>
+                    {vendor.distance && (
+                      <span className="flex items-center gap-1">
+                        <FiMapPin className="text-orange-500" /> 
+                        {vendor.distance} away
+                      </span>
+                    )}
+                    {vendor.status && (
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-bold ${
+                        vendor.status === 'Open' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'
+                      }`}>
+                        {vendor.status}
+                      </span>
+                    )}
                   </div>
-                </div>
-                <div className={`px-3 py-1 rounded-full text-xs font-bold ${
-                  vendor.status === 'Open Now' ? 'bg-green-500/90 text-white' : 'bg-gray-500/90 text-white'
-                }`}>
-                  {vendor.status || "Open Now"}
                 </div>
               </div>
             </div>
@@ -134,25 +158,24 @@ export default function PaymentDetails() {
                 <div className="text-center py-10">
                   <FiShoppingCart className="mx-auto text-4xl text-gray-300 mb-4" />
                   <p className="text-gray-500">No items in cart</p>
-                  <button
-                    onClick={() => navigate('/customer/map')}
-                    className="mt-4 text-orange-600 font-medium hover:underline"
-                  >
+                  <button onClick={() => navigate('/customer/map')} className="mt-4 text-orange-600 font-medium hover:underline">
                     Back to Menu
                   </button>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {cart.map((item) => (
-                    <div key={item.id} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
+                  {cart.map((item, index) => (
+                    <div key={item.id || index} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
                       <div className="flex items-center gap-3">
-                        <img src={item.image} alt={item.name} className="w-12 h-12 rounded-lg object-cover" />
+                        <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
+                            <VendorImage src={item.image} alt={item.name} className="w-full h-full object-cover" />
+                        </div>
                         <div>
-                          <h4 className="font-semibold text-gray-900">{item.name}</h4>
+                          <h4 className="font-semibold text-gray-900 line-clamp-1">{item.name}</h4>
                           <p className="text-sm text-gray-500">Qty: {item.qty}</p>
                         </div>
                       </div>
-                      <span className="font-bold text-gray-900">KES {item.price * item.qty}</span>
+                      <span className="font-bold text-gray-900 whitespace-nowrap">KES {item.price * item.qty}</span>
                     </div>
                   ))}
                 </div>
@@ -160,48 +183,33 @@ export default function PaymentDetails() {
             </div>
           </div>
 
-          {/* Delivery Details Card */}
+          {/* EDITABLE DELIVERY LOCATION */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
             <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <FiMapPin /> Delivery Details
+              <FiMapPin /> Delivery Location
             </h3>
             
-            {landmark ? (
-              <div className="bg-green-50 border border-green-200 rounded-xl p-4">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-green-100 flex items-center justify-center">
-                    <FiCheck className="text-green-600 text-xl" />
-                  </div>
-                  <div>
-                    <p className="font-semibold text-gray-900">Landmark Selected</p>
-                    <p className="text-gray-600">{landmark}</p>
-                    <p className="text-sm text-gray-500 mt-1">Your order will be delivered to this location</p>
-                  </div>
-                </div>
-              </div>
-            ) : (
-              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4">
-                <div className="flex items-start gap-3">
-                  <FiAlertCircle className="text-yellow-600 text-xl mt-1" />
-                  <div>
-                    <p className="font-semibold text-gray-900 mb-1">No delivery landmark specified</p>
-                    <p className="text-gray-600">Please add a delivery location for accurate delivery</p>
-                    <button 
-                      onClick={() => navigate(-1)}
-                      className="mt-2 text-orange-600 font-medium hover:underline text-sm"
-                    >
-                      ← Back to add location
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
+            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
+                    Address / Landmark
+                </label>
+                <input 
+                    type="text"
+                    value={deliveryLocation}
+                    onChange={(e) => setDeliveryLocation(e.target.value)}
+                    placeholder="Enter delivery details (e.g. Building, Floor)"
+                    className="w-full bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-orange-500 focus:border-orange-500 block p-2.5"
+                />
+                <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+                    <FiShield size={12} /> Riders will use this to find you.
+                </p>
+            </div>
           </div>
 
           {/* Payment Security */}
           <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center">
+              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
                 <FiShield className="text-blue-600 text-xl" />
               </div>
               <div>
@@ -245,7 +253,7 @@ export default function PaymentDetails() {
                 </div>
               </div>
 
-              {/* M-Pesa Input Section - Always Visible */}
+              {/* M-Pesa Input Section */}
               <div className="bg-orange-50 rounded-xl p-5 border border-orange-100">
                 <div className="flex items-center gap-3 mb-4">
                   <div className="bg-green-600 p-2 rounded-lg">
@@ -279,7 +287,6 @@ export default function PaymentDetails() {
 
               {/* Action Buttons */}
               <div className="space-y-3">
-                {/* Pay Button */}
                 <button
                   onClick={handlePayment}
                   disabled={loading || cart.length === 0}
@@ -301,7 +308,6 @@ export default function PaymentDetails() {
                   )}
                 </button>
 
-                {/* Cancel Button - High Visibility */}
                 <button
                   onClick={() => navigate(-1)}
                   className="w-full py-4 rounded-xl font-bold border-2 border-red-100 bg-red-50 text-red-600 hover:bg-red-100 hover:border-red-200 transition-colors flex items-center justify-center gap-2"
@@ -312,7 +318,6 @@ export default function PaymentDetails() {
 
             </div>
 
-            {/* Security Footer */}
             <div className="bg-gray-50 border-t border-gray-100 p-4 text-center">
               <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
                 <FiShield className="text-green-600" />

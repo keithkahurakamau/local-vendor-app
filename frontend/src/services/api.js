@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5000/api', 
   headers: {
     'Content-Type': 'application/json',
   },
@@ -39,8 +39,8 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401 || error.response?.status === 422) {
-      // Log warning but do not auto-redirect to avoid loops during valid sessions
       console.warn("Session expired or unauthorized.");
+      // Optional: Redirect to login logic can go here
     }
     return Promise.reject(error);
   }
@@ -61,11 +61,8 @@ export const vendorAPI = {
     uploadImage: async (imageFile) => {
         const formData = new FormData();
         formData.append('file', imageFile);
-
         const response = await api.post('/vendor/upload-image', formData, {
-            headers: {
-                'Content-Type': 'multipart/form-data',
-            },
+            headers: { 'Content-Type': 'multipart/form-data' },
         });
         return response.data;
     },

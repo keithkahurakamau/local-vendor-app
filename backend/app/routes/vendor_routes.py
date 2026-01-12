@@ -1,302 +1,182 @@
 from flask import Blueprint, request, jsonify
-from app.utils.decorators import vendor_required
-from app.models import VendorLocation, Transaction, MenuItem
-from app.extensions import db
-from datetime import datetime, timedelta
-import cloudinary.uploader
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from app.models import User, VendorLocation, MenuItem, Order, db
+from datetime import datetime
+import cloudinary.uploader 
 
 bp = Blueprint('vendor', __name__, url_prefix='/api/vendor')
 
-# --- NEW: Get Current Status ---
-@bp.route('/status', methods=['GET'])
-@vendor_required
-def get_status():
-    """
-    Get current vendor status based on the 3-hour rule.
-    """
-    from flask_jwt_extended import get_jwt_identity
+# --- 1. CHECK-IN & LOCATION ---
+@bp.route('/checkin', methods=['POST'])
+@jwt_required()
+def vendor_checkin():
     vendor_id = get_jwt_identity()
+    data = request.get_json()
     
+    if not data:
+        return jsonify({'error': 'No input data provided'}), 400
+    
+    # Update or Create Location
+    location = VendorLocation.query.filter_by(vendor_id=vendor_id).first()
+    if not location:
+        # Initialize new location
+        location = VendorLocation(vendor_id=vendor_id)
+        db.session.add(location)
+    
+    # Update fields
+    location.latitude = data.get('latitude')
+    location.longitude = data.get('longitude')
+    location.address = data.get('address')
+    
+    # Ensure the model has a check_in method, otherwise handle manually
+    if hasattr(location, 'check_in'):
+        location.check_in() 
+    else:
+        location.is_open = True
+        location.updated_at = datetime.utcnow()
+    
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'You are now online!'}), 200
+
+@bp.route('/status', methods=['GET'])
+@jwt_required()
+def get_status():
+    vendor_id = get_jwt_identity()
     location = VendorLocation.query.filter_by(vendor_id=vendor_id).first()
     
-    # Default closed if no location found
-    if not location:
-        return jsonify({'is_open': False}), 200
-        
-    # Check if manually open AND within time limit
-    is_active = False
-    remaining_seconds = 0
-    
-    if location.is_open and location.auto_close_at:
-        now = datetime.utcnow()
-        if location.auto_close_at > now:
-            is_active = True
-            remaining_seconds = (location.auto_close_at - now).total_seconds()
-        else:
-            # Time expired: Update DB to reflect closed state
-            location.is_open = False
-            location.auto_close_at = None
-            db.session.commit()
-            is_active = False
-
+    is_online = location.is_open if location else False
     return jsonify({
-        'is_open': is_active,
-        'remaining_seconds': remaining_seconds,
-        'address': location.address,
-        'menu_items': location.menu_items
+        'online': is_online, 
+        'location': location.address if location else None
     }), 200
 
-# --- NEW: Manual Close Endpoint ---
 @bp.route('/close', methods=['POST'])
-@vendor_required
-def close_business():
-    """Manually close the business"""
-    from flask_jwt_extended import get_jwt_identity
+@jwt_required()
+def close_vendor():
     vendor_id = get_jwt_identity()
-    
     location = VendorLocation.query.filter_by(vendor_id=vendor_id).first()
     if location:
         location.is_open = False
         location.auto_close_at = None
         db.session.commit()
-        
-    return jsonify({'success': True, 'message': 'Business closed successfully'}), 200
+    return jsonify({'success': True}), 200
 
+# --- 2. IMAGE UPLOAD (PUBLIC) ---
+# NOTE: No @jwt_required() here so new users can upload during registration
 @bp.route('/upload-image', methods=['POST'])
 def upload_image():
-    """
-    Dedicated endpoint to upload an image to Cloudinary.
-    Returns: { "url": "https://res.cloudinary.com/..." }
-    """
-    if 'file' not in request.files:
-        return jsonify({'error': 'No file part'}), 400
-        
-    file = request.files['file']
+    if 'image' not in request.files:
+        return jsonify({'error': 'No image file provided'}), 400
     
+    file = request.files['image']
     if file.filename == '':
         return jsonify({'error': 'No selected file'}), 400
 
     try:
         # Upload to Cloudinary
-        upload_result = cloudinary.uploader.upload(
-            file,
-            folder="local_vendor_app/menu_items"
-        )
-        
+        upload_result = cloudinary.uploader.upload(file)
         return jsonify({
-            'success': True,
-            'url': upload_result['secure_url'],
-            'public_id': upload_result['public_id']
+            'success': True, 
+            'url': upload_result['secure_url']
         }), 200
-        
     except Exception as e:
         print(f"Upload Error: {e}")
         return jsonify({'error': 'Image upload failed'}), 500
 
-@bp.route('/checkin', methods=['POST'])
-@vendor_required
-def checkin():
-    """V-01: Vendor Check-In endpoint"""
-    data = request.get_json()
-    from flask_jwt_extended import get_jwt_identity
+# --- 3. MENU MANAGEMENT ---
+@bp.route('/menu', methods=['GET', 'POST'])
+@jwt_required()
+def manage_menu():
     vendor_id = get_jwt_identity()
+    
+    if request.method == 'POST':
+        data = request.get_json()
+        
+        # Validation
+        if not data.get('name') or not data.get('price'):
+            return jsonify({'error': 'Name and Price are required'}), 400
 
-    latitude = data.get('latitude')
-    longitude = data.get('longitude')
-    address = data.get('address')
-    menu_items = data.get('menu_items')
-
-    if not all([latitude, longitude, menu_items]):
-        return jsonify({'error': 'Latitude, longitude, and menu_items required'}), 400
-
-    # Update or create vendor location
-    location = VendorLocation.query.filter_by(vendor_id=vendor_id).first()
-
-    if location:
-        location.latitude = latitude
-        location.longitude = longitude
-        location.address = address
-        location.menu_items = menu_items
-        location.check_in()  # Sets is_open=True, last_checkin=now, auto_close_at=3 hours
-    else:
-        location = VendorLocation(
+        new_item = MenuItem(
             vendor_id=vendor_id,
-            latitude=latitude,
-            longitude=longitude,
-            address=address,
-            menu_items=menu_items
+            name=data.get('name'),
+            price=data.get('price'),
+            image_url=data.get('image_url') or "https://via.placeholder.com/150", 
+            is_available=True
         )
-        location.check_in()
-        db.session.add(location)
+        db.session.add(new_item)
+        db.session.commit()
+        
+        # Return the created item so frontend can update state immediately
+        return jsonify({
+            'success': True, 
+            'message': 'Item added',
+            'item': {
+                'id': new_item.id,
+                'name': new_item.name,
+                'price': new_item.price,
+                'image': new_item.image_url,
+                'available': new_item.is_available
+            }
+        }), 201
 
-    db.session.commit()
-
+    # GET: Fetch all items
+    items = MenuItem.query.filter_by(vendor_id=vendor_id).all()
     return jsonify({
         'success': True,
-        'message': 'Check-in successful',
-        'location_id': location.id
+        'items': [{
+            'id': i.id, 
+            'name': i.name, 
+            'price': i.price, 
+            'image': i.image_url, 
+            'available': i.is_available
+        } for i in items]
     }), 200
 
-@bp.route('/menu', methods=['POST'])
-@vendor_required
-def update_menu():
-    """Update the menu_items JSON field"""
-    data = request.get_json()
-    from flask_jwt_extended import get_jwt_identity
-    vendor_id = get_jwt_identity()
-
-    menu_items = data.get('menu_items')
-    if not menu_items:
-        return jsonify({'error': 'menu_items required'}), 400
-    location = VendorLocation.query.filter_by(vendor_id=vendor_id).first()
-
-    if not location:
-        return jsonify({'error': 'Vendor location not found. Please check in first.'}), 404
-
-    location.menu_items = menu_items
-    location.updated_at = datetime.utcnow()
-    db.session.commit()
-
-    return jsonify({
-        'success': True,
-        'message': 'Menu updated successfully'
-    }), 200
-
-@bp.route('/orders', methods=['GET'])
-@vendor_required
-def get_orders():
-    """Get vendor's transaction history"""
-    from flask_jwt_extended import get_jwt_identity
-    vendor_id = get_jwt_identity()
-    transactions = Transaction.query.filter_by(vendor_id=vendor_id).order_by(Transaction.created_at.desc()).all()
-
-    orders = []
-    for transaction in transactions:
-        orders.append({
-            'id': transaction.id,
-            'customer_phone': transaction.customer_phone,
-            'amount': transaction.amount,
-            'mpesa_receipt_number': transaction.mpesa_receipt_number,
-            'status': transaction.status,
-            'created_at': transaction.created_at.isoformat(),
-            'updated_at': transaction.updated_at.isoformat() if hasattr(transaction, 'updated_at') and transaction.updated_at else None
-        })
-
-    return jsonify({
-        'success': True,
-        'orders': orders
-    }), 200
-
-@bp.route('/menu-items', methods=['GET'])
-@vendor_required
-def get_menu_items():
-    """Get all menu items for the vendor"""
-    from flask_jwt_extended import get_jwt_identity
-    vendor_id = get_jwt_identity()
-
-    menu_items = MenuItem.query.filter_by(vendor_id=vendor_id).all()
-
-    items = []
-    for item in menu_items:
-        items.append({
-            'id': item.id,
-            'name': item.name,
-            'price': item.price,
-            'image_url': item.image_url,
-            'is_available': item.is_available,
-            'created_at': item.created_at.isoformat()
-        })
-
-    return jsonify({
-        'success': True,
-        'menu_items': items
-    }), 200
-
-@bp.route('/menu-items', methods=['POST'])
-@vendor_required
-def create_menu_item():
-    """Create a new menu item"""
-    data = request.get_json()
-    from flask_jwt_extended import get_jwt_identity
-    vendor_id = get_jwt_identity()
-
-    name = data.get('name')
-    price = data.get('price')
-    image_url = data.get('image_url')
-
-    if not name or not price:
-        return jsonify({'error': 'Name and price are required'}), 400
-
-    menu_item = MenuItem(
-        vendor_id=vendor_id,
-        name=name,
-        price=price,
-        image_url=image_url
-    )
-
-    db.session.add(menu_item)
-    db.session.commit()
-
-    return jsonify({
-        'success': True,
-        'message': 'Menu item created successfully',
-        'menu_item': {
-            'id': menu_item.id,
-            'name': menu_item.name,
-            'price': menu_item.price,
-            'image_url': menu_item.image_url,
-            'is_available': menu_item.is_available,
-            'created_at': menu_item.created_at.isoformat()
-        }
-    }), 201
-
-@bp.route('/menu-items/<int:item_id>', methods=['PUT'])
-@vendor_required
-def update_menu_item(item_id):
-    """Update a menu item"""
-    data = request.get_json()
-    from flask_jwt_extended import get_jwt_identity
-    vendor_id = get_jwt_identity()
-
-    menu_item = MenuItem.query.filter_by(id=item_id, vendor_id=vendor_id).first()
-    if not menu_item:
-        return jsonify({'error': 'Menu item not found'}), 404
-
-    menu_item.name = data.get('name', menu_item.name)
-    menu_item.price = data.get('price', menu_item.price)
-    menu_item.image_url = data.get('image_url', menu_item.image_url)
-    menu_item.is_available = data.get('is_available', menu_item.is_available)
-
-    db.session.commit()
-
-    return jsonify({
-        'success': True,
-        'message': 'Menu item updated successfully',
-        'menu_item': {
-            'id': menu_item.id,
-            'name': menu_item.name,
-            'price': menu_item.price,
-            'image_url': menu_item.image_url,
-            'is_available': menu_item.is_available,
-            'created_at': menu_item.created_at.isoformat()
-        }
-    }), 200
-
-@bp.route('/menu-items/<int:item_id>', methods=['DELETE'])
-@vendor_required
+@bp.route('/menu/<int:item_id>', methods=['DELETE'])
+@jwt_required()
 def delete_menu_item(item_id):
-    """Delete a menu item"""
-    from flask_jwt_extended import get_jwt_identity
     vendor_id = get_jwt_identity()
+    item = MenuItem.query.filter_by(id=item_id, vendor_id=vendor_id).first()
+    if item:
+        db.session.delete(item)
+        db.session.commit()
+        return jsonify({'success': True, 'message': 'Item removed'}), 200
+    return jsonify({'error': 'Item not found'}), 404
 
-    menu_item = MenuItem.query.filter_by(id=item_id, vendor_id=vendor_id).first()
-    if not menu_item:
-        return jsonify({'error': 'Menu item not found'}), 404
-
-    db.session.delete(menu_item)
-    db.session.commit()
-
+# --- 4. ORDER MANAGEMENT ---
+@bp.route('/orders', methods=['GET'])
+@jwt_required()
+def get_orders():
+    vendor_id = get_jwt_identity()
+    # Fetch PENDING orders first, then others
+    orders = Order.query.filter_by(vendor_id=vendor_id).order_by(Order.created_at.desc()).all()
+    
     return jsonify({
         'success': True,
-        'message': 'Menu item deleted successfully'
+        'orders': [{
+            'id': o.id,
+            'order_number': o.order_number,
+            'customer_phone': o.customer_phone,
+            'total_amount': o.total_amount,
+            'status': o.status, # PENDING, ACCEPTED, REJECTED, READY, COMPLETED
+            'items': o.items,
+            'delivery_location': o.delivery_location,
+            'created_at': o.created_at.strftime("%H:%M")
+        } for o in orders]
     }), 200
+
+@bp.route('/order/<int:order_id>/status', methods=['PATCH'])
+@jwt_required()
+def update_order_status(order_id):
+    vendor_id = get_jwt_identity()
+    data = request.get_json()
+    new_status = data.get('status') # ACCEPTED / REJECTED / READY
+
+    order = Order.query.filter_by(id=order_id, vendor_id=vendor_id).first()
+    if not order:
+        return jsonify({'error': 'Order not found'}), 404
+        
+    order.status = new_status
+    db.session.commit()
+    
+    return jsonify({'success': True, 'message': f'Order marked as {new_status}'}), 200

@@ -93,10 +93,11 @@ const VendorCheckIn = () => {
             if (menu_items && Array.isArray(menu_items) && menu_items.length > 0) {
                 const formattedMenu = menu_items.map(item => ({
                     id: Date.now() + Math.random(),
-                    name: item.name,
-                    desc: item.description || '',
-                    price: item.price,
-                    image: item.image
+                    name: item.name || '',
+                    // FIX: Handle backend 'description' and ensure string fallback
+                    desc: item.description || item.desc || '', 
+                    price: item.price || '', // Ensure no nulls
+                    image: item.image || null
                 }));
                 setMenuItems(formattedMenu);
             }
@@ -114,26 +115,23 @@ const VendorCheckIn = () => {
     fetchStatus();
   }, [navigate]);
 
-  // --- 2. REAL-TIME COUNTDOWN TIMER (FIXED) ---
+  // --- 2. REAL-TIME COUNTDOWN TIMER ---
   useEffect(() => {
     let timer;
-    // Only run timer if we have time remaining
     if (isOpen && remainingSeconds > 0) {
       timer = setInterval(() => {
         setRemainingSeconds((prev) => {
           if (prev <= 1) {
-            setIsOpen(false); // Natural expiration
+            setIsOpen(false); 
             return 0;
           }
           return prev - 1;
         });
       }, 1000);
     } 
-    // Removed the "else if" block that forced close on 0 seconds
     return () => clearInterval(timer);
   }, [isOpen, remainingSeconds]);
 
-  // Helper to format time
   const formatTime = (seconds) => {
     if (seconds <= 0) return "0h 0m 0s";
     const h = Math.floor(seconds / 3600);
@@ -235,11 +233,12 @@ const VendorCheckIn = () => {
   };
 
   const handleEditClick = (item) => {
+    // FIX: Ensure values are never undefined/null to prevent React uncontrolled input warning
     setNewItem({ 
-        name: item.name, 
-        desc: item.desc, 
-        price: item.price, 
-        image: item.image 
+        name: item.name || '', 
+        desc: item.desc || '', 
+        price: item.price || '', 
+        image: item.image || null 
     });
     setEditingId(item.id);
     setImagePreview(item.image); 
@@ -281,7 +280,7 @@ const VendorCheckIn = () => {
         
         const itemPayload = {
             name: newItem.name,
-            desc: newItem.desc,
+            desc: newItem.desc || '', // Ensure string
             price: newItem.price,
             image: finalImageUrl || null
         };
@@ -324,7 +323,7 @@ const VendorCheckIn = () => {
           address: address,
           menu_items: menuItems.map(item => ({
             name: item.name,
-            description: item.desc,
+            description: item.desc, // Backend expects 'description'
             price: parseFloat(item.price),
             image: item.image 
           })),

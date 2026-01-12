@@ -4,17 +4,20 @@ export const authService = {
   // Generic Login (Used by Vendors)
   login: async (credentials) => {
     const response = await api.post('/auth/login', credentials);
-    if (response.data.token) {
+    
+    // FIX: Check for 'access_token' instead of 'token'
+    if (response.data.access_token || response.data.token) {
       localStorage.setItem('user', JSON.stringify(response.data));
     }
     return response.data;
   },
 
-  // Admin Login (Wrapper for clarity, uses same endpoint usually)
+  // Admin Login
   adminLogin: async (email, password) => {
     const response = await api.post('/auth/login', { email, password, role: 'admin' });
-    if (response.data.token) {
-      // Store specifically for admin if needed, or share 'user' key
+    
+    // FIX: Check for 'access_token' here too
+    if (response.data.access_token || response.data.token) {
       localStorage.setItem('user', JSON.stringify(response.data));
     }
     return response.data;
@@ -23,7 +26,10 @@ export const authService = {
   // Registration
   register: async (userData) => {
     const response = await api.post('/auth/register', userData);
-    if (response.data.token) {
+    
+    // FIX: Check for 'access_token' here too (or 'user_id' if your register doesn't return a token)
+    // Note: If your register endpoint doesn't return a token, you might need to auto-login after register.
+    if (response.data.access_token || response.data.token) {
       localStorage.setItem('user', JSON.stringify(response.data));
     }
     return response.data;
@@ -31,9 +37,11 @@ export const authService = {
 
   logout: () => {
     localStorage.removeItem('user');
+    // Optional: Redirect to login or clear other state
   },
 
   getCurrentUser: () => {
-    return JSON.parse(localStorage.getItem('user'));
+    const userStr = localStorage.getItem('user');
+    return userStr ? JSON.parse(userStr) : null;
   }
 };

@@ -1,7 +1,7 @@
 from flask import Blueprint, request, jsonify
 from werkzeug.security import check_password_hash, generate_password_hash
-from flask_jwt_extended import create_access_token
-from app.models import User
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
+from app.models import User, VendorLocation
 from app.extensions import db
 from datetime import datetime, timedelta
 
@@ -10,117 +10,72 @@ bp = Blueprint('auth', __name__, url_prefix='/api/auth')
 @bp.route('/register', methods=['POST'])
 def register():
     data = request.get_json()
-    email = data.get('email')
-    phone_number = data.get('phone_number')
-    password = data.get('password')
-    role = data.get('role')
+    if data.get('role') == 'vendor' and not data.get('business_name'):
+         return jsonify({'error': 'Business Name is required for vendors'}), 400
+    
+    if User.query.filter_by(email=data['email']).first():
+        return jsonify({'error': 'User exists'}), 409
 
-    if not all([email, phone_number, password, role]):
-        return jsonify({'error': 'Email, phone_number, password, and role required'}), 400
-
-    if role not in ['vendor', 'admin']:
-        return jsonify({'error': 'Invalid role'}), 400
-
-    # If role is vendor, require business_name
-    business_name = data.get('business_name')
-    if role == 'vendor' and not business_name:
-        return jsonify({'error': 'business_name required for vendors'}), 400
-
-    # Check if user already exists
-    existing_user = User.query.filter(
-        (User.email == email) | (User.phone_number == phone_number)
-    ).first()
-    if existing_user:
-        return jsonify({'error': 'User with this email or phone number already exists'}), 409
-
-    # Create new user
-    hashed_password = generate_password_hash(password)
-    username = email.split('@')[0]  # Generate username from email
-    new_user = User(
-        username=username,
-        email=email,
-        phone_number=phone_number,
-        password_hash=hashed_password,
-        role=role,
-        business_name=business_name
+    hashed = generate_password_hash(data['password'])
+    user = User(
+        username=data['email'].split('@')[0], 
+        email=data['email'], 
+        phone_number=data['phone_number'],
+        password_hash=hashed, 
+        role=data['role'],
+        business_name=data.get('business_name')
     )
-
-    db.session.add(new_user)
+    db.session.add(user)
     db.session.commit()
-
-    return jsonify({
-        'success': True,
-        'message': f'{role.capitalize()} registered successfully',
-        'user_id': new_user.id
-    }), 201
+    return jsonify({'success': True, 'user_id': user.id}), 201
 
 @bp.route('/login', methods=['POST'])
 def login():
     data = request.get_json()
-    email = data.get('email')
-    password = data.get('password')
+    user = User.query.filter_by(email=data.get('email')).first()
 
-    if not email or not password:
-        return jsonify({'error': 'Email and password required'}), 400
-
-    user = User.query.filter_by(email=email).first()
-    if not user or not check_password_hash(user.password_hash, password):
+    if not user or not check_password_hash(user.password_hash, data.get('password')):
         return jsonify({'error': 'Invalid credentials'}), 401
 
-    # Reset the 3-hour timer for vendors when they login
+    # Logic Fix: Extend timer on login if location exists
     if user.role == 'vendor':
-        from app.models import VendorLocation
         location = VendorLocation.query.filter_by(vendor_id=user.id).first()
-        if location:
-            # Reset the timer by setting auto_close_at to None
-            # The timer will start when they become inactive
-            location.auto_close_at = None
+        if location and location.is_open:
+            location.auto_close_at = datetime.utcnow() + timedelta(hours=3)
             location.updated_at = datetime.utcnow()
             db.session.commit()
 
     access_token = create_access_token(identity=str(user.id))
-    return jsonify({'access_token': access_token}), 200
+    return jsonify({
+        'access_token': access_token, 
+        'role': user.role,
+        'user': {'id': user.id, 'name': user.business_name or user.username}
+    }), 200
 
 @bp.route('/activity', methods=['POST'])
+@jwt_required()
 def update_activity():
-    """Update user activity timestamp"""
-    from flask_jwt_extended import get_jwt_identity
-    try:
-        user_id = get_jwt_identity()
-        user = User.query.get(user_id)
-
-        # Reset the 3-hour timer for active vendors
-        if user and user.role == 'vendor':
-            from app.models import VendorLocation
-            location = VendorLocation.query.filter_by(vendor_id=user.id).first()
-            if location and location.is_open:
-                # Reset the timer since user is active
-                location.auto_close_at = None
-                location.updated_at = datetime.utcnow()
-                db.session.commit()
-
-        return jsonify({'success': True}), 200
-    except Exception as e:
-        return jsonify({'error': 'Invalid token'}), 401
+    """Keep-Alive: Extends 3-hour window"""
+    user_id = get_jwt_identity()
+    user = User.query.get(user_id)
+    if user and user.role == 'vendor':
+        location = VendorLocation.query.filter_by(vendor_id=user.id).first()
+        if location and location.is_open:
+            location.auto_close_at = datetime.utcnow() + timedelta(hours=3)
+            location.updated_at = datetime.utcnow()
+            db.session.commit()
+    return jsonify({'success': True}), 200
 
 @bp.route('/logout', methods=['POST'])
+@jwt_required()
 def logout():
-    """Handle vendor logout and start 3-hour timer"""
-    from flask_jwt_extended import get_jwt_identity
-    try:
-        user_id = get_jwt_identity()
-        user = User.query.get(user_id)
-
-        # Start the 3-hour timer for vendors when they logout
-        if user and user.role == 'vendor':
-            from app.models import VendorLocation
-            location = VendorLocation.query.filter_by(vendor_id=user.id).first()
-            if location and location.is_open:
-                # Start the 3-hour timer
-                location.auto_close_at = datetime.utcnow() + timedelta(hours=3)
-                location.updated_at = datetime.utcnow()
-                db.session.commit()
-
-        return jsonify({'success': True, 'message': 'Logged out successfully'}), 200
-    except Exception as e:
-        return jsonify({'error': 'Invalid token'}), 401
+    user_id = get_jwt_identity()
+    user = User.query.get(user_id)
+    if user and user.role == 'vendor':
+        location = VendorLocation.query.filter_by(vendor_id=user.id).first()
+        if location:
+            # Immediate close on logout
+            location.is_open = False
+            location.auto_close_at = None 
+            db.session.commit()
+    return jsonify({'success': True}), 200
