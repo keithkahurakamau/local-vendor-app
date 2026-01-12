@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { User, Lock, Loader2, AlertCircle, ArrowLeft } from 'lucide-react'; // Added ArrowLeft
+import { User, Lock, Loader2, AlertCircle } from 'lucide-react';
+// FIX: Use Named Import with curly braces
 import { authService } from '../../services/authService';
 
 const VendorLogin = () => {
@@ -13,6 +14,7 @@ const VendorLogin = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  // --- FIX: Clear old tokens when loading this page ---
   useEffect(() => {
     localStorage.removeItem('user');
   }, []);
@@ -27,6 +29,7 @@ const VendorLogin = () => {
     setError('');
 
     try {
+      // Call the named export function
       await authService.login(formData);
       navigate('/vendor/dashboard');
     } catch (err) {
@@ -38,19 +41,7 @@ const VendorLogin = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-orange-50/50 py-12 px-4 sm:px-6 lg:px-8 relative">
-      
-      {/* --- NEW: Back to Home Button --- */}
-      <Link 
-        to="/" 
-        className="absolute top-6 left-6 md:top-10 md:left-10 flex items-center gap-2 text-gray-500 hover:text-orange-600 transition-all font-medium group"
-      >
-        <div className="p-2 bg-white rounded-full shadow-sm group-hover:shadow-md border border-gray-200 transition-all">
-          <ArrowLeft className="h-5 w-5 group-hover:-translate-x-1 transition-transform" />
-        </div>
-        <span className="hidden sm:inline">Back to Home</span>
-      </Link>
-
+    <div className="min-h-screen flex items-center justify-center bg-orange-50/50 py-12 px-4 sm:px-6 lg:px-8">
       <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl border border-gray-100">
         <div className="text-center mb-8">
           <div className="mx-auto h-16 w-16 bg-orange-100 rounded-full flex items-center justify-center mb-4">
@@ -92,7 +83,6 @@ const VendorLogin = () => {
                 className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all"
                 value={formData.password}
                 onChange={handleChange}
-                autoComplete="current-password"
               />
             </div>
           </div>

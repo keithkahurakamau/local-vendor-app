@@ -56,30 +56,58 @@ const OrderPage = () => {
   useEffect(() => {
     const fetchVendorData = async () => {
       setLoading(true);
+      setError(null);
 
+      // PRIORITY 1: Check if we have vendor data passed via location state
       if (location.state?.vendor && location.state.vendor.menuItems) {
         setVendor(location.state.vendor);
         setMenuItems(location.state.vendor.menuItems || []);
         setLoading(false);
-      } else {
+        return;
+      }
+
+      // PRIORITY 2: If vendorId is provided in URL params, fetch from API
+      if (vendorId && vendorId !== 'undefined') {
         try {
           const response = await mapService.getVendorDetails(vendorId);
           if (response.success && response.vendor) {
             setVendor(response.vendor);
             setMenuItems(response.vendor.menuItems || []);
           } else {
-            setError(response.error || "Failed to load vendor");
+            setError("Failed to load vendor");
+            // If API fails but we have vendor ID in state, try that
+            if (location.state?.vendor) {
+              setVendor(location.state.vendor);
+              setMenuItems(location.state.vendor.menuItems || []);
+              setError(null);
+            }
           }
         } catch (err) {
-            setError("Could not connect to server");
+          console.error("Error fetching vendor:", err);
+          // If API fails but we have vendor data in state, use it
+          if (location.state?.vendor) {
+            setVendor(location.state.vendor);
+            setMenuItems(location.state.vendor.menuItems || []);
+            setError(null);
+          } else {
+            setError("Could not connect to server. Please check your connection.");
+          }
         } finally {
           setLoading(false);
         }
+      } else {
+        // PRIORITY 3: No vendorId and no vendor data in state - redirect to map
+        setError("No vendor selected. Please select a vendor from the map.");
+        setLoading(false);
+        // Optional: Auto-redirect after a delay
+        setTimeout(() => {
+          navigate('/customer/map', { replace: true });
+        }, 3000);
       }
     };
 
     fetchVendorData();
-  }, [vendorId, location.state]);
+  }, [vendorId, location.state, navigate]);
 
   // --- FILTERING ---
   const filteredItems = useMemo(() => {

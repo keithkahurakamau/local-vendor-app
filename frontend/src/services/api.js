@@ -10,14 +10,13 @@ const api = axios.create({
 // Request interceptor to add JWT token
 api.interceptors.request.use(
   (config) => {
-    // --- FIX: Read from the 'user' object (where login saves it) ---
+    // FIX: Read from the 'user' object where login saves it
     const userStr = localStorage.getItem('user');
     let token = null;
     
     if (userStr) {
         try {
             const user = JSON.parse(userStr);
-            // The backend returns 'token', but we check 'access_token' just in case
             token = user.token || user.access_token; 
         } catch (e) {
             console.error("Error parsing user token", e);
@@ -34,13 +33,12 @@ api.interceptors.request.use(
   }
 );
 
-// Response interceptor for error handling
+// Response interceptor
 api.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response?.status === 401 || error.response?.status === 422) {
       console.warn("Session expired or unauthorized.");
-      // Optional: Redirect to login logic can go here
     }
     return Promise.reject(error);
   }
@@ -73,8 +71,6 @@ export const vendorAPI = {
     deleteMenuItem: (id) => api.delete(`/vendor/menu-items/${id}`),
 };
 
-export const adminAPI = {
-    // Add admin endpoints if needed
-};
+export const adminAPI = {};
 
 export default api;

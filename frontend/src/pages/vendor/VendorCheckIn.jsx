@@ -67,7 +67,7 @@ const VendorCheckIn = () => {
   // Menu State
   const [menuItems, setMenuItems] = useState([]);
 
-  // Edit State
+  // Edit State - Initialized with safe defaults
   const [newItem, setNewItem] = useState({ name: '', desc: '', price: '', image: null });
   const [editingId, setEditingId] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -80,7 +80,10 @@ const VendorCheckIn = () => {
     const fetchStatus = async () => {
         try {
             const userStr = localStorage.getItem('user');
-            if (!userStr) return; 
+            if (!userStr) {
+                navigate('/vendor/login');
+                return;
+            }
 
             const response = await vendorAPI.getVendorStatus();
             const { is_open, remaining_seconds, address: savedAddress, menu_items } = response.data;
@@ -90,14 +93,14 @@ const VendorCheckIn = () => {
             
             if (savedAddress) setAddress(savedAddress);
             
-            if (menu_items && Array.isArray(menu_items) && menu_items.length > 0) {
+            if (menu_items && Array.isArray(menu_items)) {
                 const formattedMenu = menu_items.map(item => ({
                     id: Date.now() + Math.random(),
+                    // FIX: Robust fallbacks for all fields
                     name: item.name || '',
-                    // FIX: Handle backend 'description' and ensure string fallback
                     desc: item.description || item.desc || '', 
-                    price: item.price || '', // Ensure no nulls
-                    image: item.image || null
+                    price: item.price !== undefined && item.price !== null ? item.price : '',
+                    image: item.image || item.image_url || null
                 }));
                 setMenuItems(formattedMenu);
             }
@@ -233,12 +236,12 @@ const VendorCheckIn = () => {
   };
 
   const handleEditClick = (item) => {
-    // FIX: Ensure values are never undefined/null to prevent React uncontrolled input warning
+    // FIX: Using Nullish Coalescing (??) prevents 0 from becoming ''
     setNewItem({ 
-        name: item.name || '', 
-        desc: item.desc || '', 
-        price: item.price || '', 
-        image: item.image || null 
+        name: item.name ?? '', 
+        desc: item.desc ?? '', 
+        price: item.price ?? '', 
+        image: item.image ?? null 
     });
     setEditingId(item.id);
     setImagePreview(item.image); 
@@ -280,7 +283,7 @@ const VendorCheckIn = () => {
         
         const itemPayload = {
             name: newItem.name,
-            desc: newItem.desc || '', // Ensure string
+            desc: newItem.desc || '', 
             price: newItem.price,
             image: finalImageUrl || null
         };
@@ -323,7 +326,7 @@ const VendorCheckIn = () => {
           address: address,
           menu_items: menuItems.map(item => ({
             name: item.name,
-            description: item.desc, // Backend expects 'description'
+            description: item.desc,
             price: parseFloat(item.price),
             image: item.image 
           })),
@@ -521,15 +524,15 @@ const VendorCheckIn = () => {
               </div>
               <div className="sm:col-span-3">
                 <input type="text" placeholder="Dish Name" className="w-full h-full px-4 py-2 bg-white border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none text-sm text-gray-900 placeholder-gray-500"
-                  value={newItem.name} onChange={e => setNewItem({...newItem, name: e.target.value})} disabled={isUploading} />
+                  value={newItem.name ?? ''} onChange={e => setNewItem({...newItem, name: e.target.value})} disabled={isUploading} />
               </div>
               <div className="sm:col-span-4">
                 <input type="text" placeholder="Short Description" className="w-full h-full px-4 py-2 bg-white border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none text-sm text-gray-900 placeholder-gray-500"
-                  value={newItem.desc} onChange={e => setNewItem({...newItem, desc: e.target.value})} disabled={isUploading} />
+                  value={newItem.desc ?? ''} onChange={e => setNewItem({...newItem, desc: e.target.value})} disabled={isUploading} />
               </div>
               <div className="sm:col-span-2">
                 <input type="number" placeholder="Price" className="w-full h-full px-4 py-2 bg-white border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none text-sm font-bold text-gray-900 placeholder-gray-500"
-                  value={newItem.price} onChange={e => setNewItem({...newItem, price: e.target.value})} disabled={isUploading} />
+                  value={newItem.price ?? ''} onChange={e => setNewItem({...newItem, price: e.target.value})} disabled={isUploading} />
               </div>
               <div className="sm:col-span-1">
                 <button
