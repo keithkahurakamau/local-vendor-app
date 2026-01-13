@@ -275,9 +275,9 @@ def get_vendor_details(vendor_id):
             item_price = prices.get(item_name, 0)
         
         formatted_menu_items.append({
-            'id': hash(item_name) % 10000,  # Simple ID generation
+            'id': hash(item_name) % 10000 if item_name else idx,
             'name': item_name,
-            'price': prices.get(item_name, 0),
+            'price': item_price,
             'description': f'Delicious {item_name.lower()}',
             'category': 'main',  # Default category, can be enhanced
             'popular': True if 'chapati' in item_name.lower() or 'pilau' in item_name.lower() else False
