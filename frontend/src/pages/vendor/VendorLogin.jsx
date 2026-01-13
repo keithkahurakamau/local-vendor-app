@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { User, Lock, Loader2, AlertCircle } from 'lucide-react';
-// FIX: Use Named Import with curly braces
+// ADDED: ArrowLeft for the escape button
+import { User, Lock, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
 import { authService } from '../../services/authService';
 
 const VendorLogin = () => {
@@ -14,7 +14,6 @@ const VendorLogin = () => {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  // --- FIX: Clear old tokens when loading this page ---
   useEffect(() => {
     localStorage.removeItem('user');
   }, []);
@@ -29,7 +28,6 @@ const VendorLogin = () => {
     setError('');
 
     try {
-      // Call the named export function
       await authService.login(formData);
       navigate('/vendor/dashboard');
     } catch (err) {
@@ -41,7 +39,18 @@ const VendorLogin = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-orange-50/50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen flex items-center justify-center bg-orange-50/50 py-12 px-4 sm:px-6 lg:px-8 relative">
+      
+      {/* ADDED: Escape / Back to Home Button */}
+      <div className="absolute top-6 left-6">
+        <Link 
+          to="/" 
+          className="flex items-center gap-2 text-gray-500 hover:text-orange-600 transition-colors font-medium bg-white px-4 py-2 rounded-full shadow-sm hover:shadow-md border border-gray-100"
+        >
+           <ArrowLeft className="h-4 w-4" /> Back to Home
+        </Link>
+      </div>
+
       <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl border border-gray-100">
         <div className="text-center mb-8">
           <div className="mx-auto h-16 w-16 bg-orange-100 rounded-full flex items-center justify-center mb-4">

@@ -30,7 +30,6 @@ const mapService = {
   // Get details for a specific vendor
   getVendorDetails: async (vendorId) => {
     try {
-      // Calls /api/customer/vendor/:id
       const response = await api.get(`/customer/vendor/${vendorId}`);
       if (response.data.success) {
         return response.data.vendor;
@@ -39,6 +38,26 @@ const mapService = {
     } catch (error) {
       console.error("Error fetching vendor details:", error);
       throw error;
+    }
+  },
+
+  // --- MISSING FUNCTION ADDED HERE ---
+  initiatePayment: async (vendorId, amount, phoneNumber, items, deliveryLocation) => {
+    try {
+      // Construct payload matching backend expectations
+      const payload = {
+        vendor_id: vendorId,
+        amount: amount,
+        phone_number: phoneNumber,
+        items: items,
+        delivery_location: deliveryLocation
+      };
+
+      const response = await api.post('/customer/pay', payload);
+      return response.data;
+    } catch (error) {
+      console.error("Payment initiation error:", error);
+      throw new Error(error.response?.data?.error || "Payment failed");
     }
   }
 };

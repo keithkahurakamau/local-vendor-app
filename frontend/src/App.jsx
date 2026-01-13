@@ -17,6 +17,8 @@ import LandingPage from './pages/customer/landingPage';
 import MapPage from './pages/customer/mapPage';
 import OrderPage from './pages/orderPay/orderPage';
 import PaymentDetails from './pages/orderPay/paymentDetails';
+import PaymentSuccess from './pages/orderPay/PaymentSuccess';
+import PaymentFailed from './pages/orderPay/PaymentFailed';
 
 function App() {
   return (
@@ -42,6 +44,8 @@ function App() {
           
           {/* Order Routes */}
           <Route path="/order/:vendorId" element={<OrderPage />} />
+          <Route path="/payment-success" element={<PaymentSuccess />} />
+          <Route path="/payment-failed" element={<PaymentFailed />} />
           {/* FIX: Add this redirect so /order doesn't crash */}
           <Route path="/order" element={<Navigate to="/customer" replace />} />
           

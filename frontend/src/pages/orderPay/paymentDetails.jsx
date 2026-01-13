@@ -70,8 +70,7 @@ export default function PaymentDetails() {
         deliveryLocation // Send manual location to backend if supported
       );
 
-      alert("Payment initiated! Check your phone for M-Pesa prompt.");
-      
+      // Success Flow
       navigate('/payment-success', {
         state: {
           amount: grandTotal,
@@ -83,7 +82,15 @@ export default function PaymentDetails() {
       });
     } catch (error) {
       console.error('Payment error:', error);
-      alert(error.message || "Payment failed. Please try again.");
+      
+      // Error Flow: Navigate to the Failed Page instead of Alerting
+      navigate('/payment-failed', {
+        state: {
+          error: error.message || "Payment failed. Please try again.",
+          vendor,
+          cart
+        }
+      });
     } finally {
       setLoading(false);
     }

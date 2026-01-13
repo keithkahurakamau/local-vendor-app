@@ -9,18 +9,18 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { vendorAPI } from '../../services/api';
 
-// Fix Leaflet Icons
+// --- LEAFLET ICON FIX ---
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 let DefaultIcon = L.icon({
-    iconUrl: icon,
-    shadowUrl: iconShadow,
-    iconSize: [25, 41],
-    iconAnchor: [12, 41]
+  iconUrl: icon,
+  shadowUrl: iconShadow,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41]
 });
 L.Marker.prototype.options.icon = DefaultIcon;
 
-// --- Helper Components ---
+// --- MAP COMPONENTS ---
 const MapUpdater = ({ center }) => {
   const map = useMap();
   useEffect(() => { if (center) map.flyTo(center, 15); }, [center, map]);
@@ -67,7 +67,7 @@ const VendorCheckIn = () => {
   // Menu State
   const [menuItems, setMenuItems] = useState([]);
 
-  // Edit State - Initialized with safe defaults
+  // Edit State
   const [newItem, setNewItem] = useState({ name: '', desc: '', price: '', image: null });
   const [editingId, setEditingId] = useState(null);
   const [imagePreview, setImagePreview] = useState(null);
@@ -80,27 +80,27 @@ const VendorCheckIn = () => {
     const fetchStatus = async () => {
         try {
             const userStr = localStorage.getItem('user');
-            if (!userStr) {
-                navigate('/vendor/login');
-                return;
-            }
+            if (!userStr) return; 
 
             const response = await vendorAPI.getVendorStatus();
             const { is_open, remaining_seconds, address: savedAddress, menu_items } = response.data;
 
+            // Safe integer parsing
+            const seconds = parseInt(remaining_seconds, 10) || 0;
+
             setIsOpen(is_open);
-            setRemainingSeconds(remaining_seconds > 0 ? remaining_seconds : 0);
+            setRemainingSeconds(seconds);
             
             if (savedAddress) setAddress(savedAddress);
             
-            if (menu_items && Array.isArray(menu_items)) {
+            if (menu_items && Array.isArray(menu_items) && menu_items.length > 0) {
+                // Ensure unique IDs for React keys
                 const formattedMenu = menu_items.map(item => ({
-                    id: Date.now() + Math.random(),
-                    // FIX: Robust fallbacks for all fields
-                    name: item.name || '',
-                    desc: item.description || item.desc || '', 
-                    price: item.price !== undefined && item.price !== null ? item.price : '',
-                    image: item.image || item.image_url || null
+                    id: Date.now() + Math.random(), 
+                    name: item.name,
+                    desc: item.description || '',
+                    price: item.price,
+                    image: item.image
                 }));
                 setMenuItems(formattedMenu);
             }
@@ -108,7 +108,6 @@ const VendorCheckIn = () => {
         } catch (error) {
             console.error("Failed to fetch status:", error);
             if (error.response && (error.response.status === 401 || error.response.status === 422)) {
-                alert("Session expired. Please login again.");
                 localStorage.removeItem('user');
                 navigate('/vendor/login');
             }
@@ -118,20 +117,21 @@ const VendorCheckIn = () => {
     fetchStatus();
   }, [navigate]);
 
-  // --- 2. REAL-TIME COUNTDOWN TIMER ---
+  // --- 2. ROBUST TIMER LOGIC ---
   useEffect(() => {
     let timer;
     if (isOpen && remainingSeconds > 0) {
       timer = setInterval(() => {
         setRemainingSeconds((prev) => {
           if (prev <= 1) {
-            setIsOpen(false); 
+            setIsOpen(false); // Only close if timer actually hits 0 naturally
             return 0;
           }
           return prev - 1;
         });
       }, 1000);
-    } 
+    }
+    // Note: We removed the auto-close if remainingSeconds is 0 to allow async operations to finish
     return () => clearInterval(timer);
   }, [isOpen, remainingSeconds]);
 
@@ -143,9 +143,10 @@ const VendorCheckIn = () => {
     return `${h}h ${m}m ${s}s`;
   };
 
-  // --- HANDLERS ---
-  const handleStatusChange = async (status) => {
-      if (status === false) {
+  // --- 3. STATUS CHANGE (The Radio Button Fix) ---
+  const handleStatusChange = async (targetStatus) => {
+      // CASE: User wants to CLOSE
+      if (targetStatus === false) {
           if (window.confirm("Are you sure you want to close? You will disappear from the map.")) {
               try {
                   await vendorAPI.closeVendor();
@@ -155,11 +156,21 @@ const VendorCheckIn = () => {
                   console.error("Error closing:", error);
               }
           }
-      } else {
-          setIsOpen(true);
+      } 
+      // CASE: User wants to OPEN
+      else {
+          // Check if we have items
+          if (menuItems.length === 0) {
+              alert("You cannot open without a menu. Add items below first.");
+              return; // Do NOT set isOpen(true)
+          }
+          
+          // Automatically trigger broadcast
+          handleBroadcast();
       }
   };
 
+  // --- 4. GPS & GEOLOCATION ---
   const handleUpdateGPS = () => {
     setIsLocating(true);
     navigator.geolocation.getCurrentPosition(
@@ -176,46 +187,29 @@ const VendorCheckIn = () => {
   const handleAddressChange = (e) => {
     const newAddress = e.target.value;
     setAddress(newAddress);
-
-    if (searchTimeout) {
-      clearTimeout(searchTimeout);
-    }
+    if (searchTimeout) clearTimeout(searchTimeout);
 
     const timeout = setTimeout(() => {
-      if (newAddress.trim()) {
-        handleLocationSearch(newAddress);
-      }
+      if (newAddress.trim()) handleLocationSearch(newAddress);
     }, 1000);
-
     setSearchTimeout(timeout);
   };
 
   const handleLocationSearch = async (searchQuery) => {
     if (!searchQuery.trim()) return;
-
     setIsSearching(true);
     try {
       const response = await fetch(
         `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(searchQuery)}&limit=5&countrycodes=KE`
       );
       const results = await response.json();
-
       if (results.length > 0) {
         const bestResult = results[0];
-        const newPosition = {
-          lat: parseFloat(bestResult.lat),
-          lng: parseFloat(bestResult.lon)
-        };
-        setPosition(newPosition);
+        setPosition({ lat: parseFloat(bestResult.lat), lng: parseFloat(bestResult.lon) });
         setAddress(bestResult.display_name);
-      } else {
-        alert("Location not found.");
       }
-    } catch (error) {
-      console.error("Geocoding error:", error);
-    } finally {
-      setIsSearching(false);
-    }
+    } catch (error) { console.error("Geocoding error:", error); } 
+    finally { setIsSearching(false); }
   };
 
   const handleReverseGeocode = async (lat, lng) => {
@@ -224,24 +218,20 @@ const VendorCheckIn = () => {
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1`
       );
       const result = await response.json();
-
-      if (result && result.display_name) {
-        setAddress(result.display_name);
-      } else {
-        setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
-      }
+      if (result && result.display_name) setAddress(result.display_name);
+      else setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
     } catch (error) {
       setAddress(`${lat.toFixed(5)}, ${lng.toFixed(5)}`);
     }
   };
 
+  // --- 5. MENU MANAGEMENT (With Cloudinary) ---
   const handleEditClick = (item) => {
-    // FIX: Using Nullish Coalescing (??) prevents 0 from becoming ''
     setNewItem({ 
-        name: item.name ?? '', 
-        desc: item.desc ?? '', 
-        price: item.price ?? '', 
-        image: item.image ?? null 
+        name: item.name, 
+        desc: item.desc, 
+        price: item.price, 
+        image: item.image // This is likely a URL string
     });
     setEditingId(item.id);
     setImagePreview(item.image); 
@@ -259,7 +249,6 @@ const VendorCheckIn = () => {
     if (file) {
       if (file.size > 5 * 1024 * 1024) {
         alert('Image size must be less than 5MB');
-        e.target.value = '';
         return;
       }
       setNewItem({ ...newItem, image: file }); 
@@ -270,22 +259,30 @@ const VendorCheckIn = () => {
   };
 
   const handleSaveItem = async () => {
-    if (!newItem.name || !newItem.price) return;
+    if (!newItem.name || !newItem.price) {
+        alert("Name and Price are required.");
+        return;
+    }
 
     setIsUploading(true);
     let finalImageUrl = newItem.image; 
 
     try {
+        // Only upload if it is a raw File object (newly selected)
         if (newItem.image instanceof File) {
             const uploadRes = await vendorAPI.uploadImage(newItem.image);
-            finalImageUrl = uploadRes.url;
+            if (uploadRes.success) {
+                finalImageUrl = uploadRes.url;
+            } else {
+                throw new Error("Image upload failed");
+            }
         } 
         
         const itemPayload = {
             name: newItem.name,
-            desc: newItem.desc || '', 
-            price: newItem.price,
-            image: finalImageUrl || null
+            desc: newItem.desc,
+            price: parseFloat(newItem.price),
+            image: finalImageUrl || null // Save URL
         };
 
         if (editingId) {
@@ -302,7 +299,7 @@ const VendorCheckIn = () => {
 
     } catch (error) {
         console.error("Error saving item:", error);
-        alert("Failed to upload image.");
+        alert("Failed to save item. Please try again.");
     } finally {
         setIsUploading(false);
     }
@@ -312,6 +309,7 @@ const VendorCheckIn = () => {
     setMenuItems(menuItems.filter(item => item.id !== id));
   };
 
+  // --- 6. BROADCAST (GO LIVE) ---
   const handleBroadcast = async () => {
     if (menuItems.length === 0) {
         alert("Please add at least one menu item.");
@@ -336,13 +334,13 @@ const VendorCheckIn = () => {
 
       if (response.success) {
         setIsOpen(true);
-        setRemainingSeconds(3 * 60 * 60); // Reset timer to 3 hours
-        alert("You are now LIVE! Status refreshed for 3 hours.");
+        // Sync timer exactly with backend response
+        setRemainingSeconds(response.remaining_seconds); 
+        alert("You are now LIVE! Customers can see you.");
       }
     } catch (e) {
         console.error("Broadcast error:", e);
-        if (e.response && (e.response.status === 401 || e.response.status === 422)) {
-             alert("Your session has expired. Please login again.");
+        if (e.response?.status === 401) {
              navigate('/vendor/login');
         } else {
              alert(e.response?.data?.error || 'Check-in failed');
@@ -376,7 +374,8 @@ const VendorCheckIn = () => {
       </nav>
 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-8 space-y-8">
-        {/* Status Section */}
+        
+        {/* STATUS CARD */}
         <section className="bg-white rounded-3xl shadow-sm border border-orange-100 p-6 sm:p-8">
           <div className="flex items-start justify-between mb-6">
             <div className="flex items-start gap-4">
@@ -416,8 +415,8 @@ const VendorCheckIn = () => {
           </div>
         </section>
 
-        {/* Location Section */}
-        <section className={`bg-white rounded-3xl shadow-sm border border-orange-100 p-6 sm:p-8 transition-opacity duration-300 ${!isOpen ? 'opacity-60 pointer-events-none grayscale' : ''}`}>
+        {/* LOCATION SECTION */}
+        <section className={`bg-white rounded-3xl shadow-sm border border-orange-100 p-6 sm:p-8 transition-opacity duration-300 ${!isOpen ? 'opacity-80' : ''}`}>
           <h2 className="text-lg font-bold text-gray-900 mb-6">Current Location</h2>
           <div className="flex flex-col sm:flex-row gap-4 mb-4">
             <div className="flex-1 relative">
@@ -426,12 +425,10 @@ const VendorCheckIn = () => {
                 type="text"
                 value={address}
                 onChange={handleAddressChange}
-                placeholder="Search for location or enter address..."
-                className="w-full pl-10 pr-4 py-3 border-2 border-orange-300 rounded-xl bg-orange-50 text-base font-semibold text-gray-800 shadow-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none"
+                placeholder="Search for location..."
+                className="w-full pl-10 pr-4 py-3 border-2 border-orange-300 rounded-xl bg-orange-50 text-base font-semibold text-gray-800 focus:ring-2 focus:ring-orange-500 outline-none"
               />
-              {isSearching && (
-                <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-orange-500" />
-              )}
+              {isSearching && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-orange-500" />}
             </div>
             <button onClick={handleUpdateGPS} disabled={isLocating} className="px-6 py-3 bg-white border border-orange-200 text-orange-700 font-bold rounded-xl hover:bg-orange-50 flex items-center gap-2">
               {isLocating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Navigation className="h-4 w-4" />} Update GPS
@@ -446,8 +443,8 @@ const VendorCheckIn = () => {
           </div>
         </section>
 
-        {/* Menu Section */}
-        <section className={`bg-white rounded-3xl shadow-sm border border-orange-100 p-6 sm:p-8 transition-opacity duration-300 ${!isOpen ? 'opacity-60 pointer-events-none grayscale' : ''}`}>
+        {/* MENU SECTION */}
+        <section className={`bg-white rounded-3xl shadow-sm border border-orange-100 p-6 sm:p-8`}>
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-lg font-bold text-gray-900">Menu Update</h2>
             <span className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded-md">Live Preview</span>
@@ -459,31 +456,16 @@ const VendorCheckIn = () => {
                 <div className="h-20 w-20 bg-white rounded-xl flex items-center justify-center text-3xl shadow-sm border border-gray-100 overflow-hidden">
                   {item.image ? (
                     <img src={item.image} alt={item.name} className="w-full h-full object-cover" />
-                  ) : (
-                    "🍲"
-                  )}
+                  ) : "🍲"}
                 </div>
                 <div className="flex-1 w-full space-y-2 sm:space-y-0 sm:grid sm:grid-cols-3 sm:gap-4">
                   <div className="font-bold text-gray-900">{item.name}</div>
                   <div className="text-sm text-gray-500 line-clamp-2">{item.desc}</div>
                   <div className="font-bold text-orange-600">KES {item.price}</div>
                 </div>
-
                 <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleEditClick(item)}
-                    className="p-2 text-gray-400 hover:text-orange-600 hover:bg-orange-100 rounded-lg transition-colors"
-                    title="Edit Item"
-                  >
-                    <Pencil className="h-5 w-5" />
-                  </button>
-                  <button
-                    onClick={() => handleDeleteItem(item.id)}
-                    className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors"
-                    title="Delete Item"
-                  >
-                    <Trash2 className="h-5 w-5" />
-                  </button>
+                  <button onClick={() => handleEditClick(item)} className="p-2 text-gray-400 hover:text-orange-600 hover:bg-orange-100 rounded-lg"><Pencil className="h-5 w-5" /></button>
+                  <button onClick={() => handleDeleteItem(item.id)} className="p-2 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded-lg"><Trash2 className="h-5 w-5" /></button>
                 </div>
               </div>
             ))}
@@ -508,38 +490,28 @@ const VendorCheckIn = () => {
                   {imagePreview ? (
                     <img src={imagePreview} alt="Preview" className="w-full h-full object-cover rounded-lg" />
                   ) : (
-                    <>
-                      <Upload className="h-5 w-5" />
-                      <span className="text-[10px] mt-1 font-medium">Img</span>
-                    </>
+                    <><Upload className="h-5 w-5" /><span className="text-[10px] mt-1 font-medium">Img</span></>
                   )}
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={handleImageChange}
-                    className="hidden"
-                    disabled={isUploading}
-                  />
+                  <input type="file" accept="image/*" onChange={handleImageChange} className="hidden" disabled={isUploading} />
                 </label>
               </div>
               <div className="sm:col-span-3">
-                <input type="text" placeholder="Dish Name" className="w-full h-full px-4 py-2 bg-white border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none text-sm text-gray-900 placeholder-gray-500"
-                  value={newItem.name ?? ''} onChange={e => setNewItem({...newItem, name: e.target.value})} disabled={isUploading} />
+                <input type="text" placeholder="Dish Name" className="w-full h-full px-4 py-2 bg-white border-2 border-gray-300 rounded-xl outline-none"
+                  value={newItem.name} onChange={e => setNewItem({...newItem, name: e.target.value})} disabled={isUploading} />
               </div>
               <div className="sm:col-span-4">
-                <input type="text" placeholder="Short Description" className="w-full h-full px-4 py-2 bg-white border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none text-sm text-gray-900 placeholder-gray-500"
-                  value={newItem.desc ?? ''} onChange={e => setNewItem({...newItem, desc: e.target.value})} disabled={isUploading} />
+                <input type="text" placeholder="Description" className="w-full h-full px-4 py-2 bg-white border-2 border-gray-300 rounded-xl outline-none"
+                  value={newItem.desc} onChange={e => setNewItem({...newItem, desc: e.target.value})} disabled={isUploading} />
               </div>
               <div className="sm:col-span-2">
-                <input type="number" placeholder="Price" className="w-full h-full px-4 py-2 bg-white border-2 border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none text-sm font-bold text-gray-900 placeholder-gray-500"
-                  value={newItem.price ?? ''} onChange={e => setNewItem({...newItem, price: e.target.value})} disabled={isUploading} />
+                <input type="number" placeholder="Price" className="w-full h-full px-4 py-2 bg-white border-2 border-gray-300 rounded-xl font-bold outline-none"
+                  value={newItem.price} onChange={e => setNewItem({...newItem, price: e.target.value})} disabled={isUploading} />
               </div>
               <div className="sm:col-span-1">
                 <button
                   onClick={handleSaveItem}
                   disabled={isUploading}
-                  className={`w-full h-full rounded-xl flex items-center justify-center shadow-lg transition-all text-white ${editingId ? 'bg-green-600 hover:bg-green-700 shadow-green-200' : 'bg-orange-600 hover:bg-orange-700 shadow-orange-200'} ${isUploading ? 'opacity-70 cursor-wait' : ''}`}
-                  title={editingId ? "Update Dish" : "Add Dish"}
+                  className={`w-full h-full rounded-xl flex items-center justify-center text-white ${editingId ? 'bg-green-600 hover:bg-green-700' : 'bg-orange-600 hover:bg-orange-700'} ${isUploading ? 'opacity-70' : ''}`}
                 >
                   {isUploading ? <Loader2 className="h-5 w-5 animate-spin" /> : (editingId ? <Save className="h-5 w-5" /> : "+")}
                 </button>
@@ -549,14 +521,7 @@ const VendorCheckIn = () => {
         </section>
 
         <div className="pb-10 space-y-4">
-          <button 
-            onClick={() => navigate('/vendor/orders')} 
-            className="w-full py-4 bg-orange-100 hover:bg-orange-200 text-orange-700 rounded-2xl font-bold text-lg border-2 border-orange-200 hover:border-orange-300 transition-all duration-300 flex items-center justify-center gap-3"
-          >
-            <ShoppingBag className="h-6 w-6" /> View Orders
-          </button>
-
-          <button onClick={handleBroadcast} disabled={isBroadcasting || !isOpen} className={`w-full py-5 bg-gray-900 text-white rounded-2xl font-bold text-lg shadow-xl hover:shadow-2xl transition-all duration-300 flex items-center justify-center gap-3 ${!isOpen ? 'opacity-50 cursor-not-allowed' : 'hover:bg-orange-600'}`}>
+          <button onClick={handleBroadcast} disabled={isBroadcasting || menuItems.length === 0} className={`w-full py-5 bg-gray-900 text-white rounded-2xl font-bold text-lg shadow-xl hover:shadow-2xl transition-all duration-300 flex items-center justify-center gap-3 ${isBroadcasting ? 'opacity-70' : 'hover:bg-orange-600'}`}>
             {isBroadcasting ? <><Loader2 className="h-6 w-6 animate-spin" /> Broadcasting...</> : <><Save className="h-6 w-6" /> Broadcast Location & Menu</>}
           </button>
         </div>
