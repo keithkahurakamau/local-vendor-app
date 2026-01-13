@@ -264,7 +264,16 @@ def get_vendor_details(vendor_id):
 
     # Create menu items with prices
     formatted_menu_items = []
-    for item_name in menu_items:
+    for idx, item in enumerate(menu_items):
+        #handle both string items and dict items
+        if isinstance(item, dict):
+            item_name = item.get('name', 'Unknown Item')
+            item_price = item.get('price', prices.get(item_name, 0))
+        else:
+            #item is a string
+            item_name = str(item)
+            item_price = prices.get(item_name, 0)
+        
         formatted_menu_items.append({
             'id': hash(item_name) % 10000,  # Simple ID generation
             'name': item_name,
