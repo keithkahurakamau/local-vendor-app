@@ -114,17 +114,17 @@ class Transaction(db.Model):
     
     customer_phone = db.Column(db.String(15), nullable=False)
     amount = db.Column(db.Float, nullable=False)
-    mpesa_receipt_number = db.Column(db.String(50), unique=True, nullable=True) # Increased length for CheckoutID
-    transaction_date = db.Column(db.DateTime)
-    status = db.Column(db.String(20), default='PENDING', index=True)
+    
+    # --- ADD THIS NEW COLUMN ---
+    # This matches the "CheckoutRequestID" from M-Pesa
+    checkout_request_id = db.Column(db.String(100), unique=True, index=True) 
+    
+    mpesa_receipt_number = db.Column(db.String(50), unique=True, nullable=True)
+    transaction_date = db.Column(db.DateTime, default=datetime.utcnow) 
+    status = db.Column(db.String(20), default='PENDING', index=True) 
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, onupdate=datetime.utcnow)
-
-    __table_args__ = (
-        Index('idx_transaction_monitor', 'status', 'created_at'),
-    )
-
 # ============================================================================
 # 5. MENU ITEM (Write-Model for Admin/Vendor)
 # ============================================================================

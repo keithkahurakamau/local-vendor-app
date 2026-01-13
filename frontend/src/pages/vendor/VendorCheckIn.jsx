@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Store, MapPin, Navigation, Clock, LogOut,
-  ShoppingBag, Plus, Upload, Trash2, Save, Loader2, Pencil, X
+  ShoppingBag, Plus, Upload, Trash2, Save, Loader2, Pencil, X, ArrowLeft
 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
@@ -85,7 +85,6 @@ const VendorCheckIn = () => {
             const response = await vendorAPI.getVendorStatus();
             const { is_open, remaining_seconds, address: savedAddress, menu_items } = response.data;
 
-            // Safe integer parsing
             const seconds = parseInt(remaining_seconds, 10) || 0;
 
             setIsOpen(is_open);
@@ -94,7 +93,6 @@ const VendorCheckIn = () => {
             if (savedAddress) setAddress(savedAddress);
             
             if (menu_items && Array.isArray(menu_items) && menu_items.length > 0) {
-                // Ensure unique IDs for React keys
                 const formattedMenu = menu_items.map(item => ({
                     id: Date.now() + Math.random(), 
                     name: item.name,
@@ -117,21 +115,20 @@ const VendorCheckIn = () => {
     fetchStatus();
   }, [navigate]);
 
-  // --- 2. ROBUST TIMER LOGIC ---
+  // --- 2. TIMER LOGIC ---
   useEffect(() => {
     let timer;
     if (isOpen && remainingSeconds > 0) {
       timer = setInterval(() => {
         setRemainingSeconds((prev) => {
           if (prev <= 1) {
-            setIsOpen(false); // Only close if timer actually hits 0 naturally
+            setIsOpen(false); 
             return 0;
           }
           return prev - 1;
         });
       }, 1000);
     }
-    // Note: We removed the auto-close if remainingSeconds is 0 to allow async operations to finish
     return () => clearInterval(timer);
   }, [isOpen, remainingSeconds]);
 
@@ -143,9 +140,8 @@ const VendorCheckIn = () => {
     return `${h}h ${m}m ${s}s`;
   };
 
-  // --- 3. STATUS CHANGE (The Radio Button Fix) ---
+  // --- 3. STATUS CHANGE ---
   const handleStatusChange = async (targetStatus) => {
-      // CASE: User wants to CLOSE
       if (targetStatus === false) {
           if (window.confirm("Are you sure you want to close? You will disappear from the map.")) {
               try {
@@ -156,16 +152,11 @@ const VendorCheckIn = () => {
                   console.error("Error closing:", error);
               }
           }
-      } 
-      // CASE: User wants to OPEN
-      else {
-          // Check if we have items
+      } else {
           if (menuItems.length === 0) {
               alert("You cannot open without a menu. Add items below first.");
-              return; // Do NOT set isOpen(true)
+              return;
           }
-          
-          // Automatically trigger broadcast
           handleBroadcast();
       }
   };
@@ -213,6 +204,8 @@ const VendorCheckIn = () => {
   };
 
   const handleReverseGeocode = async (lat, lng) => {
+    // Update numeric Lat/Lon immediately
+    setPosition({ lat, lng });
     try {
       const response = await fetch(
         `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}&addressdetails=1`
@@ -225,13 +218,13 @@ const VendorCheckIn = () => {
     }
   };
 
-  // --- 5. MENU MANAGEMENT (With Cloudinary) ---
+  // --- 5. MENU MANAGEMENT ---
   const handleEditClick = (item) => {
     setNewItem({ 
         name: item.name, 
         desc: item.desc, 
         price: item.price, 
-        image: item.image // This is likely a URL string
+        image: item.image
     });
     setEditingId(item.id);
     setImagePreview(item.image); 
@@ -268,7 +261,6 @@ const VendorCheckIn = () => {
     let finalImageUrl = newItem.image; 
 
     try {
-        // Only upload if it is a raw File object (newly selected)
         if (newItem.image instanceof File) {
             const uploadRes = await vendorAPI.uploadImage(newItem.image);
             if (uploadRes.success) {
@@ -282,7 +274,7 @@ const VendorCheckIn = () => {
             name: newItem.name,
             desc: newItem.desc,
             price: parseFloat(newItem.price),
-            image: finalImageUrl || null // Save URL
+            image: finalImageUrl || null
         };
 
         if (editingId) {
@@ -334,7 +326,6 @@ const VendorCheckIn = () => {
 
       if (response.success) {
         setIsOpen(true);
-        // Sync timer exactly with backend response
         setRemainingSeconds(response.remaining_seconds); 
         alert("You are now LIVE! Customers can see you.");
       }
@@ -373,7 +364,14 @@ const VendorCheckIn = () => {
         </div>
       </nav>
 
-      <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-8 space-y-8">
+      {/* Added "Back to Dashboard" button just in case */}
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-4">
+        <button onClick={() => navigate('/vendor/dashboard')} className="flex items-center text-sm text-gray-500 hover:text-orange-600">
+            <ArrowLeft className="h-4 w-4 mr-1" /> Back to Dashboard
+        </button>
+      </div>
+
+      <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-4 space-y-8">
         
         {/* STATUS CARD */}
         <section className="bg-white rounded-3xl shadow-sm border border-orange-100 p-6 sm:p-8">
@@ -418,6 +416,7 @@ const VendorCheckIn = () => {
         {/* LOCATION SECTION */}
         <section className={`bg-white rounded-3xl shadow-sm border border-orange-100 p-6 sm:p-8 transition-opacity duration-300 ${!isOpen ? 'opacity-80' : ''}`}>
           <h2 className="text-lg font-bold text-gray-900 mb-6">Current Location</h2>
+          
           <div className="flex flex-col sm:flex-row gap-4 mb-4">
             <div className="flex-1 relative">
               <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-orange-500" />
@@ -434,6 +433,18 @@ const VendorCheckIn = () => {
               {isLocating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Navigation className="h-4 w-4" />} Update GPS
             </button>
           </div>
+
+          {/* --- REQUIREMENT: Visual confirmation of coordinates --- */}
+          <div className="mb-4 flex items-center gap-4 text-xs font-mono text-gray-500 bg-gray-50 p-2 rounded-lg border border-gray-100">
+             <div className="flex items-center gap-2">
+                <span className="font-bold text-gray-700">LAT:</span> {position.lat.toFixed(6)}
+             </div>
+             <div className="w-px h-4 bg-gray-300"></div>
+             <div className="flex items-center gap-2">
+                <span className="font-bold text-gray-700">LNG:</span> {position.lng.toFixed(6)}
+             </div>
+          </div>
+
           <div className="h-64 w-full rounded-2xl overflow-hidden border-2 border-orange-100 relative z-0">
              <MapContainer center={position} zoom={15} style={{ height: '100%', width: '100%' }}>
                 <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
@@ -445,6 +456,7 @@ const VendorCheckIn = () => {
 
         {/* MENU SECTION */}
         <section className={`bg-white rounded-3xl shadow-sm border border-orange-100 p-6 sm:p-8`}>
+          {/* ... (Menu section remains unchanged) ... */}
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-lg font-bold text-gray-900">Menu Update</h2>
             <span className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded-md">Live Preview</span>

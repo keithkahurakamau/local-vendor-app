@@ -41,16 +41,16 @@ const mapService = {
     }
   },
 
-  // --- MISSING FUNCTION ADDED HERE ---
+  // --- CORRECTED PAYMENT FUNCTION ---
   initiatePayment: async (vendorId, amount, phoneNumber, items, deliveryLocation) => {
     try {
-      // Construct payload matching backend expectations
+      // FIX: Keys must match 'customer_routes.py' exactly (camelCase vs snake_case)
       const payload = {
-        vendor_id: vendorId,
-        amount: amount,
-        phone_number: phoneNumber,
-        items: items,
-        delivery_location: deliveryLocation
+        vendorId: vendorId,             // Backend expects 'vendorId'
+        amount: amount,                 // Backend expects 'amount'
+        phone: phoneNumber,             // Backend expects 'phone'
+        items: items,                   // Backend expects 'items'
+        deliveryLocation: deliveryLocation // Backend expects 'deliveryLocation'
       };
 
       const response = await api.post('/customer/pay', payload);

@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-// ADDED: ArrowLeft
-import { User, Mail, Lock, Phone, MapPin, Store, Upload, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
+// ADDED: Eye, EyeOff
+import { User, Mail, Lock, Phone, MapPin, Store, Upload, Loader2, AlertCircle, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { authService } from '../../services/authService';
 import { vendorAPI } from '../../services/api';
 
@@ -42,6 +42,9 @@ const NewVendorRegister = () => {
   const [imagePreview, setImagePreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  
+  // ADDED: State for password visibility
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -102,7 +105,8 @@ const NewVendorRegister = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-orange-50/50 py-12 px-4 sm:px-6 lg:px-8 relative">
+    // UPDATED: Changed bg-orange-50/50 to bg-orange-500
+    <div className="min-h-screen flex items-center justify-center bg-orange-500 py-12 px-4 sm:px-6 lg:px-8 relative">
       
       {/* ADDED: Escape / Back to Home Button */}
       <div className="absolute top-6 left-6 z-20">
@@ -166,9 +170,30 @@ const NewVendorRegister = () => {
                 <Phone className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
                 <input name="phone_number" type="tel" required placeholder="M-Pesa Phone Number" className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none" value={formData.phone_number} onChange={handleChange} />
               </div>
+              
+              {/* UPDATED: Password Field with Toggle */}
               <div className="relative">
                 <Lock className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
-                <input name="password" type="password" required placeholder="Create Password" className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none" value={formData.password} onChange={handleChange} />
+                <input 
+                  name="password" 
+                  type={showPassword ? "text" : "password"} 
+                  required 
+                  placeholder="Create Password" 
+                  className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none" 
+                  value={formData.password} 
+                  onChange={handleChange} 
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600 focus:outline-none"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-5 w-5" />
+                  ) : (
+                    <Eye className="h-5 w-5" />
+                  )}
+                </button>
               </div>
               
               <div className="border-2 border-dashed border-gray-300 rounded-xl p-4 text-center hover:bg-gray-50 transition-colors cursor-pointer relative">
