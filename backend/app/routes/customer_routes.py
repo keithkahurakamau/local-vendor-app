@@ -126,6 +126,10 @@ def initiate_payment():
     phone = data.get('phone')
     items = data.get('items', [])
     delivery_loc = data.get('deliveryLocation', 'In-Store')
+    
+    # NEW: Capture Geolocation
+    cust_lat = data.get('customerLat')
+    cust_lon = data.get('customerLon')
 
     if not vendor_id or not amount or not phone:
         return jsonify({'success': False, 'error': 'Missing payment details'}), 400
@@ -139,6 +143,8 @@ def initiate_payment():
             total_amount=float(amount),
             items=items,
             delivery_location=delivery_loc,
+            customer_latitude=cust_lat, # Save GPS Lat
+            customer_longitude=cust_lon, # Save GPS Lon
             status='Pending Payment'
         )
         db.session.add(new_order)
@@ -156,7 +162,6 @@ def initiate_payment():
 
         # CHECK RESPONSE
         if 'ResponseCode' in response and response['ResponseCode'] == '0':
-            # --- CASE A: API Success (Push sent to phone) ---
             checkout_id = response.get('CheckoutRequestID')
 
             new_txn = Transaction(
@@ -165,7 +170,7 @@ def initiate_payment():
                 customer_phone=phone,
                 amount=float(amount),
                 checkout_request_id=checkout_id,
-                status='PENDING', # Will update to SUCCESS/FAILED on callback
+                status='PENDING', 
                 transaction_date=datetime.utcnow()
             )
             db.session.add(new_txn)
@@ -178,8 +183,6 @@ def initiate_payment():
                 'checkout_id': checkout_id
             }), 200
         else:
-            # --- CASE B: API Failure (e.g. Invalid Number) ---
-            # FIX: Record the failure instead of rolling back!
             error_msg = response.get('errorMessage', 'M-Pesa request failed')
             
             failed_txn = Transaction(
@@ -187,17 +190,16 @@ def initiate_payment():
                 order_id=new_order.id,
                 customer_phone=phone,
                 amount=float(amount),
-                checkout_request_id=None, # No ID if API failed
-                status='FAILED',          # Log as FAILED immediately
+                checkout_request_id=None, 
+                status='FAILED',          
                 transaction_date=datetime.utcnow(),
-                mpesa_receipt_number="API_ERROR" # Flag to recognize API errors
+                mpesa_receipt_number=None 
             )
             
-            # Update order status too
             new_order.status = 'Payment Failed'
             
             db.session.add(failed_txn)
-            db.session.commit() # Commit so it shows in Admin Logs
+            db.session.commit()
 
             return jsonify({'success': False, 'error': error_msg}), 400
 

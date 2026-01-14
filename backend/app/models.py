@@ -87,6 +87,10 @@ class Order(db.Model):
     # --- ADDED: Delivery Location Column ---
     delivery_location = db.Column(db.String(255), nullable=True)
 
+    # --- ADDED: Customer GPS Coordinates ---
+    customer_latitude = db.Column(db.Float, nullable=True)
+    customer_longitude = db.Column(db.Float, nullable=True)
+
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
     transaction = db.relationship('Transaction', backref='order', uselist=False)
@@ -115,7 +119,6 @@ class Transaction(db.Model):
     customer_phone = db.Column(db.String(15), nullable=False)
     amount = db.Column(db.Float, nullable=False)
     
-    # --- ADD THIS NEW COLUMN ---
     # This matches the "CheckoutRequestID" from M-Pesa
     checkout_request_id = db.Column(db.String(100), unique=True, index=True) 
     
@@ -125,6 +128,7 @@ class Transaction(db.Model):
 
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     updated_at = db.Column(db.DateTime, onupdate=datetime.utcnow)
+
 # ============================================================================
 # 5. MENU ITEM (Write-Model for Admin/Vendor)
 # ============================================================================
@@ -149,9 +153,7 @@ class MenuItem(db.Model):
 def update_search_index(mapper, connection, target):
     """
     Auto-updates the VendorLocation JSON whenever the MenuItem table changes.
-    This ensures the 'Search' (Read) model matches the 'Inventory' (Write) model.
     """
-    # 1. Fetch all available items for this vendor
     items_table = MenuItem.__table__
     stmt = select(items_table).where(
         items_table.c.vendor_id == target.vendor_id,
@@ -159,7 +161,6 @@ def update_search_index(mapper, connection, target):
     )
     results = connection.execute(stmt).fetchall()
     
-    # 2. Serialize to JSON format expected by search
     menu_snapshot = []
     for row in results:
         menu_snapshot.append({
@@ -169,7 +170,6 @@ def update_search_index(mapper, connection, target):
             "available": row.is_available
         })
     
-    # 3. Update the VendorLocation table
     loc_table = VendorLocation.__table__
     connection.execute(
         update(loc_table)

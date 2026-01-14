@@ -6,6 +6,8 @@ import {
 } from 'react-icons/fi';
 import { BiStore } from 'react-icons/bi';
 import mapService from '../../services/mapService';
+// FIX: Import Location Context
+import { useLocation as useLocationContext } from '../../context/LocationContext';
 
 // --- SAFE IMAGE COMPONENT ---
 const VendorImage = ({ src, alt, className }) => {
@@ -32,11 +34,14 @@ const VendorImage = ({ src, alt, className }) => {
 export default function PaymentDetails() {
   const navigate = useNavigate();
   const location = useLocation();
+  
+  // FIX: Get User GPS Location from Context
+  const { location: userLocation } = useLocationContext();
+
   const { cart = [], vendor = {}, landmark = '' } = location.state || {};
 
   const [loading, setLoading] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
-  // FIX: Make delivery location editable here too
   const [deliveryLocation, setDeliveryLocation] = useState(landmark || "");
 
   const calculateFees = () => {
@@ -62,15 +67,17 @@ export default function PaymentDetails() {
     setLoading(true);
 
     try {
+      // FIX: Pass GPS coordinates
       const response = await mapService.initiatePayment(
         vendor.id,
         grandTotal,
         `+254${phoneNumber}`,
         cart,
-        deliveryLocation // Send manual location to backend if supported
+        deliveryLocation,
+        userLocation?.lat, // Latitude
+        userLocation?.lng  // Longitude
       );
 
-      // Success Flow
       navigate('/payment-success', {
         state: {
           amount: grandTotal,
@@ -82,8 +89,6 @@ export default function PaymentDetails() {
       });
     } catch (error) {
       console.error('Payment error:', error);
-      
-      // Error Flow: Navigate to the Failed Page instead of Alerting
       navigate('/payment-failed', {
         state: {
           error: error.message || "Payment failed. Please try again.",

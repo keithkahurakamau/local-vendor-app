@@ -1,12 +1,12 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from app.models import VendorLocation, MenuItem, User, db
+from app.models import VendorLocation, MenuItem, User, Order, db
 from app.utils.cloudinary_service import upload_image
 from datetime import datetime, timedelta
 
 bp = Blueprint('vendor', __name__, url_prefix='/api/vendor')
 
-# --- 1. UPLOAD IMAGE (Public Access for Registration) ---
+# --- 1. UPLOAD IMAGE ---
 @bp.route('/upload', methods=['POST'])
 def upload_file():
     if 'image' not in request.files:
@@ -22,58 +22,49 @@ def upload_file():
     else:
         return jsonify({'error': 'Upload failed'}), 500
 
-# --- 2. CHECK-IN (BROADCAST LOCATION & MENU) ---
+# --- 2. CHECK-IN ---
 @bp.route('/checkin', methods=['POST'])
 @jwt_required()
 def check_in():
     vendor_id = get_jwt_identity()
     data = request.get_json()
 
-    # 1. Find or Create Location
     location = VendorLocation.query.filter_by(vendor_id=vendor_id).first()
     if not location:
         location = VendorLocation(vendor_id=vendor_id)
         db.session.add(location)
 
-    # 2. Update Coordinates
     location.latitude = data.get('latitude')
     location.longitude = data.get('longitude')
     location.address = data.get('address')
-    
-    # 3. Update Menu (Optimized Read Model)
     location.menu_items = data.get('menu_items', [])
-    
-    # 4. Go Live (Set Open + Timer)
-    location.check_in() # Sets auto_close_at to Now + 3 Hours
+    location.check_in() 
     
     db.session.commit()
 
     return jsonify({
         'success': True, 
-        'remaining_seconds': 10800, # 3 hours
+        'remaining_seconds': 10800,
         'message': 'You are live!'
     }), 200
 
-# --- 3. GET STATUS (SYNC FRONTEND WITH SERVER) ---
+# --- 3. GET STATUS ---
 @bp.route('/status', methods=['GET'])
 @jwt_required()
 def get_status():
     vendor_id = get_jwt_identity()
     location = VendorLocation.query.filter_by(vendor_id=vendor_id).first()
 
-    # If no location exists, they are closed
     if not location:
         return jsonify({'is_open': False, 'remaining_seconds': 0, 'menu_items': []}), 200
 
     now = datetime.utcnow()
     remaining = 0
     
-    # Check Logic: If open, calculate time left
     if location.is_open and location.auto_close_at:
         delta = location.auto_close_at - now
         remaining = int(delta.total_seconds())
 
-    # CRITICAL FIX: If time expired, force Close in DB
     if remaining <= 0 and location.is_open:
         location.is_open = False
         location.updated_at = datetime.utcnow()
@@ -87,7 +78,33 @@ def get_status():
         'menu_items': location.menu_items or []
     }), 200
 
-# --- 4. CLOSE VENDOR MANUALLY ---
+# --- 4. GET ORDERS (NEW) ---
+@bp.route('/orders', methods=['GET'])
+@jwt_required()
+def get_vendor_orders():
+    vendor_id = get_jwt_identity()
+    
+    orders = Order.query.filter_by(vendor_id=vendor_id).order_by(Order.created_at.desc()).all()
+    
+    output = []
+    for order in orders:
+        output.append({
+            'id': order.id,
+            'customer_phone': order.customer_phone,
+            'amount': order.total_amount,
+            'status': order.status,
+            'created_at': order.created_at,
+            'items': order.items,
+            'delivery_location': order.delivery_location,
+            # Pass Coordinates for Mapping
+            'customer_lat': order.customer_latitude,
+            'customer_lon': order.customer_longitude,
+            'mpesa_receipt_number': order.transaction.mpesa_receipt_number if order.transaction else None
+        })
+    
+    return jsonify({'success': True, 'orders': output}), 200
+
+# --- 5. CLOSE VENDOR ---
 @bp.route('/close', methods=['POST'])
 @jwt_required()
 def close_vendor():
@@ -96,7 +113,7 @@ def close_vendor():
     
     if location:
         location.is_open = False
-        location.auto_close_at = datetime.utcnow() # Expire immediately
+        location.auto_close_at = datetime.utcnow() 
         db.session.commit()
         
     return jsonify({'success': True}), 200

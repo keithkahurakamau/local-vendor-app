@@ -41,16 +41,18 @@ const mapService = {
     }
   },
 
-  // --- CORRECTED PAYMENT FUNCTION ---
-  initiatePayment: async (vendorId, amount, phoneNumber, items, deliveryLocation) => {
+  // --- UPDATED PAYMENT FUNCTION (Accepts Lat/Lng) ---
+  initiatePayment: async (vendorId, amount, phoneNumber, items, deliveryLocation, lat, lng) => {
     try {
-      // FIX: Keys must match 'customer_routes.py' exactly (camelCase vs snake_case)
       const payload = {
-        vendorId: vendorId,             // Backend expects 'vendorId'
-        amount: amount,                 // Backend expects 'amount'
-        phone: phoneNumber,             // Backend expects 'phone'
-        items: items,                   // Backend expects 'items'
-        deliveryLocation: deliveryLocation // Backend expects 'deliveryLocation'
+        vendorId: vendorId,             
+        amount: amount,                 
+        phone: phoneNumber,             
+        items: items,                   
+        deliveryLocation: deliveryLocation,
+        // Send Geolocation
+        customerLat: lat,
+        customerLon: lng
       };
 
       const response = await api.post('/customer/pay', payload);
