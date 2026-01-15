@@ -45,8 +45,8 @@ export default function PaymentDetails() {
   const [deliveryLocation, setDeliveryLocation] = useState(landmark || "");
 
   const calculateFees = () => {
-    const deliveryFee = 50; 
-    const serviceFee = 20;  
+    const deliveryFee = 0; 
+    const serviceFee = 0;  
     const subtotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
     const grandTotal = subtotal + deliveryFee + serviceFee;
     return { subtotal, deliveryFee, serviceFee, grandTotal };

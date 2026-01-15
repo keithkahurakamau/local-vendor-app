@@ -2,6 +2,8 @@ from app.extensions import db
 from datetime import datetime, timedelta
 from sqlalchemy import JSON
 from sqlalchemy import CheckConstraint, Index, event, select, update
+import random
+import string
 
 # ============================================================================
 # 1. USER TABLE - Authentication & Roles
@@ -76,7 +78,8 @@ class Order(db.Model):
     __tablename__ = 'orders'
 
     id = db.Column(db.Integer, primary_key=True)
-    order_number = db.Column(db.String(20), unique=True, nullable=False)
+    # Changed length to 30 to accommodate the new format
+    order_number = db.Column(db.String(30), unique=True, nullable=False) 
 
     vendor_id = db.Column(db.Integer, db.ForeignKey('users.id', ondelete='CASCADE'), nullable=False)
     customer_phone = db.Column(db.String(15), nullable=False, index=True)
@@ -84,10 +87,8 @@ class Order(db.Model):
     total_amount = db.Column(db.Float, nullable=False)
     status = db.Column(db.String(20), default='New Order') 
     
-    # --- ADDED: Delivery Location Column ---
     delivery_location = db.Column(db.String(255), nullable=True)
 
-    # --- ADDED: Customer GPS Coordinates ---
     customer_latitude = db.Column(db.Float, nullable=True)
     customer_longitude = db.Column(db.Float, nullable=True)
 
@@ -97,14 +98,14 @@ class Order(db.Model):
 
     @staticmethod
     def generate_order_number():
-        last_order = Order.query.order_by(Order.id.desc()).first()
-        if last_order:
-            try:
-                last_num = int(last_order.order_number.split('-')[1])
-                return f"ORD-{str(last_num + 1).zfill(3)}"
-            except:
-                return "ORD-001"
-        return "ORD-001"
+        """
+        Generates a unique, collision-proof order number using Timestamp + Random.
+        Format: ORD-YYMMDDHH-XXXX (e.g., ORD-25011512-AB12)
+        """
+        timestamp = datetime.utcnow().strftime('%y%m%d%H') # YYMMDDHH
+        # Generate 4 random uppercase letters/digits
+        random_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+        return f"ORD-{timestamp}-{random_str}"
 
 # ============================================================================
 # 4. TRANSACTION - M-Pesa Logs
