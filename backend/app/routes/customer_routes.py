@@ -4,7 +4,7 @@ from app.models import VendorLocation, User, Order, Transaction
 from app.utils.geospatial import haversine_distance
 from app.utils.mpesa_handler import MpesaHandler
 from datetime import datetime
-
+from flask_cors import cross_origin
 bp = Blueprint('customer', __name__, url_prefix='/api/customer')
 mpesa_handler = MpesaHandler()
 
@@ -39,7 +39,7 @@ def search_vendors():
                 'vendor_id': v.vendor_id, 
                 'latitude': v.latitude, 
                 'longitude': v.longitude, 
-                'distance': round(dist, 2),
+                'distance': round(dist, 1),
                 'menu_items': v.menu_items,
                 'name': v.vendor.business_name if v.vendor else "Unknown",
                 'image': v.vendor.storefront_image_url if v.vendor else None,
@@ -68,7 +68,7 @@ def get_nearby_vendors():
                 'vendor_id': v.vendor_id,
                 'latitude': v.latitude, 
                 'longitude': v.longitude,
-                'distance': round(dist * 1000, 2),
+                'distance': round(dist, 1),
                 'menu': v.menu_items,
                 'name': v.vendor.business_name if v.vendor else "Unknown",
                 'image': v.vendor.storefront_image_url if v.vendor else None,
@@ -86,8 +86,9 @@ def get_vendor_details(vendor_id):
         if not vendor or not vendor.location: return jsonify({'error': 'Not found'}), 404
         loc = vendor.location
         
+        status = 'Open'
         if loc.auto_close_at and loc.auto_close_at < datetime.utcnow(): 
-            return jsonify({'error': 'Offline'}), 404
+            status = 'Closed'
 
         formatted_menu = []
         if loc.menu_items and isinstance(loc.menu_items, list):
@@ -109,6 +110,7 @@ def get_vendor_details(vendor_id):
                 'name': vendor.business_name, 
                 'image': vendor.storefront_image_url,
                 'address': loc.address, 
+                'status': status,
                 'menuItems': formatted_menu,
                 'categories': [{'id': 'all', 'name': 'All', 'count': len(formatted_menu)}]
             }
@@ -126,8 +128,6 @@ def initiate_payment():
     phone = data.get('phone')
     items = data.get('items', [])
     delivery_loc = data.get('deliveryLocation', 'In-Store')
-    
-    # NEW: Capture Geolocation
     cust_lat = data.get('customerLat')
     cust_lon = data.get('customerLon')
 
@@ -135,7 +135,6 @@ def initiate_payment():
         return jsonify({'success': False, 'error': 'Missing payment details'}), 400
 
     try:
-        # Create Order (Status: Pending)
         new_order = Order(
             order_number=Order.generate_order_number(),
             vendor_id=vendor_id,
@@ -143,8 +142,8 @@ def initiate_payment():
             total_amount=float(amount),
             items=items,
             delivery_location=delivery_loc,
-            customer_latitude=cust_lat, # Save GPS Lat
-            customer_longitude=cust_lon, # Save GPS Lon
+            customer_latitude=cust_lat,
+            customer_longitude=cust_lon,
             status='Pending Payment'
         )
         db.session.add(new_order)
@@ -152,7 +151,6 @@ def initiate_payment():
 
         clean_phone = phone.replace('+', '')
 
-        # Attempt M-Pesa STK Push
         response = mpesa_handler.initiate_stk_push(
             phone_number=clean_phone,
             amount=int(float(amount)),
@@ -160,7 +158,6 @@ def initiate_payment():
             transaction_desc=f"Order {new_order.order_number}"
         )
 
-        # CHECK RESPONSE
         if 'ResponseCode' in response and response['ResponseCode'] == '0':
             checkout_id = response.get('CheckoutRequestID')
 
@@ -193,9 +190,8 @@ def initiate_payment():
                 checkout_request_id=None, 
                 status='FAILED',          
                 transaction_date=datetime.utcnow(),
-                mpesa_receipt_number=None 
+                mpesa_receipt_number=None
             )
-            
             new_order.status = 'Payment Failed'
             
             db.session.add(failed_txn)
@@ -208,7 +204,7 @@ def initiate_payment():
         print(f"Payment Error: {str(e)}")
         return jsonify({'success': False, 'error': str(e)}), 500
 
-# --- 5. M-PESA CALLBACK (Webhook) ---
+# --- 5. M-PESA CALLBACK ---
 @bp.route('/callback', methods=['POST'])
 def mpesa_callback():
     try:
@@ -242,3 +238,22 @@ def mpesa_callback():
     except Exception as e:
         print(f"Callback Error: {e}")
         return jsonify({'error': 'Server Error'}), 500
+
+# --- 6. CHECK PAYMENT STATUS (POLLING) ---
+@bp.route('/payment-status/<checkout_id>', methods=['GET'])
+@cross_origin()
+def check_payment_status(checkout_id):
+    """
+    Checks the status of a specific M-Pesa transaction.
+    Called repeatedly by the frontend while waiting for the PIN.
+    """
+    try:
+        txn = Transaction.query.filter_by(checkout_request_id=checkout_id).first()
+        
+        if not txn:
+            # If not found yet (race condition), return PENDING
+            return jsonify({'status': 'PENDING'}), 200
+        
+        return jsonify({'status': txn.status}), 200
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500

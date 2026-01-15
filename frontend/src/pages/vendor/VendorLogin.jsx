@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-// ADDED: ArrowLeft for the escape button
-import { User, Lock, Loader2, AlertCircle, ArrowLeft } from 'lucide-react';
+// ADDED: Eye and EyeOff icons
+import { User, Lock, Loader2, AlertCircle, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { authService } from '../../services/authService';
 
 const VendorLogin = () => {
@@ -11,6 +11,10 @@ const VendorLogin = () => {
     email: '',
     password: ''
   });
+  
+  // ADDED: State for password visibility
+  const [showPassword, setShowPassword] = useState(false);
+  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
@@ -39,22 +43,22 @@ const VendorLogin = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-orange-50/50 py-12 px-4 sm:px-6 lg:px-8 relative">
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 via-white to-orange-50 py-12 px-4 sm:px-6 lg:px-8 relative">
       
-      {/* ADDED: Escape / Back to Home Button */}
+      {/* Back to Home Button */}
       <div className="absolute top-6 left-6">
         <Link 
           to="/" 
-          className="flex items-center gap-2 text-gray-500 hover:text-orange-600 transition-colors font-medium bg-white px-4 py-2 rounded-full shadow-sm hover:shadow-md border border-gray-100"
+          className="flex items-center gap-2 text-gray-500 hover:text-orange-600 transition-colors font-medium bg-white px-4 py-2 rounded-full shadow-sm hover:shadow-orange-100 border border-orange-100"
         >
            <ArrowLeft className="h-4 w-4" /> Back to Home
         </Link>
       </div>
 
-      <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-xl border border-gray-100">
+      <div className="max-w-md w-full bg-white p-8 rounded-3xl shadow-2xl shadow-orange-100/50 border border-orange-100">
         <div className="text-center mb-8">
-          <div className="mx-auto h-16 w-16 bg-orange-100 rounded-full flex items-center justify-center mb-4">
-            <User className="h-8 w-8 text-orange-600" />
+          <div className="mx-auto h-16 w-16 bg-orange-50 border border-orange-100 rounded-full flex items-center justify-center mb-4">
+            <User className="h-8 w-8 text-orange-500" />
           </div>
           <h2 className="text-3xl font-bold text-gray-900">Vendor Login</h2>
           <p className="mt-2 text-gray-600">Welcome back to HyperLocal</p>
@@ -70,38 +74,53 @@ const VendorLogin = () => {
         <form className="space-y-6" onSubmit={handleSubmit}>
           <div className="space-y-4">
             <div className="relative">
-              <User className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
+              <User className="absolute left-3 top-3.5 h-5 w-5 text-orange-300" />
               <input
                 name="email"
                 type="email"
                 required
                 placeholder="Email Address"
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all"
+                className="w-full pl-10 pr-4 py-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all placeholder-gray-400"
                 value={formData.email}
                 onChange={handleChange}
               />
             </div>
 
             <div className="relative">
-              <Lock className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
+              <Lock className="absolute left-3 top-3.5 h-5 w-5 text-orange-300" />
               <input
                 name="password"
-                type="password"
+                // CHANGE: Dynamic type based on state
+                type={showPassword ? "text" : "password"}
                 required
                 placeholder="Password"
-                className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all"
+                // CHANGE: Added pr-12 for the eye icon space
+                className="w-full pl-10 pr-12 py-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all placeholder-gray-400"
                 value={formData.password}
                 onChange={handleChange}
               />
+              
+              {/* CHANGE: Toggle Button */}
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-3.5 text-gray-400 hover:text-orange-500 transition-colors focus:outline-none"
+              >
+                {showPassword ? (
+                  <EyeOff className="h-5 w-5" />
+                ) : (
+                  <Eye className="h-5 w-5" />
+                )}
+              </button>
             </div>
           </div>
 
           <div className="flex items-center justify-between text-sm">
             <label className="flex items-center">
-              <input type="checkbox" className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded" />
+              <input type="checkbox" className="h-4 w-4 text-orange-600 focus:ring-orange-500 border-gray-300 rounded accent-orange-600" />
               <span className="ml-2 text-gray-600">Remember me</span>
             </label>
-            <a href="#" className="font-medium text-orange-600 hover:text-orange-500">
+            <a href="#" className="font-medium text-orange-600 hover:text-orange-500 hover:underline">
               Forgot password?
             </a>
           </div>
@@ -109,7 +128,7 @@ const VendorLogin = () => {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-gray-900 text-white py-3.5 rounded-xl font-bold text-lg hover:bg-orange-600 transition-all transform active:scale-95 shadow-lg flex items-center justify-center gap-2"
+            className="w-full bg-gray-900 text-white py-3.5 rounded-xl font-bold text-lg hover:bg-orange-600 transition-all transform active:scale-95 shadow-lg shadow-orange-200 flex items-center justify-center gap-2"
           >
             {loading ? (
               <>
