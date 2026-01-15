@@ -1,11 +1,34 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate, useParams, useLocation } from 'react-router-dom';
 import {
-  FiArrowLeft, FiStar, FiClock, FiMapPin, FiSearch,
+  FiArrowLeft, FiMapPin, FiSearch,
   FiPlus, FiMinus, FiShoppingCart, FiTrash2, FiAlertCircle,
-  FiChevronDown, FiCheck, FiX
+  FiChevronDown, FiX
 } from 'react-icons/fi';
+import { BiStore } from 'react-icons/bi';
 import mapService from '../../services/mapService';
+
+// --- SAFE IMAGE COMPONENT ---
+const VendorImage = ({ src, alt, className }) => {
+    const [hasError, setHasError] = useState(false);
+
+    if (hasError || !src) {
+        return (
+            <div className={`${className} bg-gray-100 flex flex-col items-center justify-center text-gray-400`}>
+                <BiStore className="text-2xl mb-1 opacity-30" />
+            </div>
+        );
+    }
+
+    return (
+        <img 
+            src={src} 
+            alt={alt} 
+            className={className}
+            onError={() => setHasError(true)}
+        />
+    );
+};
 
 const OrderPage = () => {
   const navigate = useNavigate();
@@ -15,122 +38,85 @@ const OrderPage = () => {
   // --- STATE ---
   const [vendor, setVendor] = useState(null);
   const [menuItems, setMenuItems] = useState([]);
-  const [categories, setCategories] = useState([]);
   const [cart, setCart] = useState([]);
   
-  // UI State
-  const [activeCategory, setActiveCategory] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  
+  // UI State
   const [cartCollapsed, setCartCollapsed] = useState(false);
   const [animatingItems, setAnimatingItems] = useState(new Set());
-
-  // Landmark State
-  const [landmarks, setLandmarks] = useState([]);
-  const [selectedLandmark, setSelectedLandmark] = useState('');
-  const [landmarkDropdownOpen, setLandmarkDropdownOpen] = useState(false);
-  const [landmarkInput, setLandmarkInput] = useState('');
-
-  // Order Modal State
+  
+  // USER INPUT STATE (Delivery Location)
+  const [deliveryLocation, setDeliveryLocation] = useState('');
   const [showOrderModal, setShowOrderModal] = useState(false);
 
-  // --- 1. DATA FETCHING (Matched to customer_routes.py) ---
+  // --- FETCH DATA ---
   useEffect(() => {
     const fetchVendorData = async () => {
       setLoading(true);
+      setError(null);
 
-      // Strategy: Try to use passed state first, otherwise fetch from API
-      if (location.state?.vendor && location.state.vendor.menuItems) {
-        // Fast load from previous page
-        const v = location.state.vendor;
-        setVendor(v);
-        setMenuItems(v.menuItems || []);
-        setCategories(v.categories || []);
-        setLoading(false);
-      } else {
-        // Deep load from API
-        const response = await mapService.getVendorDetails(vendorId);
-        if (response.success && response.vendor) {
-          setVendor(response.vendor);
-          // Your Python backend returns 'menuItems' and 'categories' inside the vendor object
-          setMenuItems(response.vendor.menuItems || []);
-          setCategories(response.vendor.categories || []);
+      // Note: We prioritize fetching fresh data to ensure we have the Address and correct Menu structure.
+      // The state passed from LandingPage might lack 'address' or use 'menu' instead of 'menuItems'.
+      try {
+        const fetchedVendor = await mapService.getVendorDetails(vendorId);
+        
+        // FIX: mapService returns the vendor object directly (or null), NOT { success: true, ... }
+        if (fetchedVendor) {
+          setVendor(fetchedVendor);
+          // Backend returns 'menuItems' in the details endpoint
+          setMenuItems(fetchedVendor.menuItems || []); 
         } else {
-          setError(response.error || "Failed to load vendor");
+          setError("Failed to load vendor details.");
         }
+      } catch (err) {
+          console.error("OrderPage Error:", err);
+          setError("Could not connect to server");
+      } finally {
         setLoading(false);
       }
     };
 
     fetchVendorData();
-  }, [vendorId, location.state]);
+  }, [vendorId]);
 
-  // --- 2. LOCATION AND LANDMARK FETCHING ---
-  useEffect(() => {
-    const getUserLocation = () => {
-      if (navigator.geolocation) {
-        navigator.geolocation.getCurrentPosition(
-          async (position) => {
-            const { latitude, longitude } = position.coords;
-
-            // Fetch nearby landmarks
-            const landmarkResponse = await mapService.getNearbyLandmarks(latitude, longitude, 100);
-            if (landmarkResponse.success && landmarkResponse.landmarks.length > 0) {
-              setLandmarks(landmarkResponse.landmarks);
-              // Auto-prefill with closest landmark
-              setLandmarkInput(landmarkResponse.landmarks[0].name);
-              setSelectedLandmark(landmarkResponse.landmarks[0].name);
-            }
-          },
-          (error) => {
-            console.error('Error getting location:', error);
-          }
-        );
-      }
-    };
-
-    if (vendor) {
-      getUserLocation();
-    }
-  }, [vendor]);
-
-
-
-  // --- 2. FILTER LOGIC ---
+  // --- FILTERING ---
   const filteredItems = useMemo(() => {
     return menuItems.filter(item => {
-      const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase());
-      // Your backend returns category IDs like 'main', 'all', etc.
-      const matchesCategory = activeCategory === 'all' || item.category === activeCategory;
-      return matchesSearch && matchesCategory;
+      const itemName = typeof item === 'string' ? item : item.name || '';
+      return itemName.toLowerCase().includes(searchQuery.toLowerCase());
     });
-  }, [menuItems, activeCategory, searchQuery]);
+  }, [menuItems, searchQuery]);
 
-  // --- 3. CART LOGIC ---
+  // --- CART HANDLERS ---
   const handleCart = (action, item) => {
     setCart(prev => {
-      const existing = prev.find(i => i.id === item.id);
+      const itemId = item.id || item.name; 
+      const existing = prev.find(i => (i.id || i.name) === itemId);
+      
       let newCart;
 
       if (action === 'add') {
+        const itemObj = typeof item === 'string' ? { name: item, price: 0, id: item } : item;
+        
         newCart = existing
-          ? prev.map(i => i.id === item.id ? { ...i, qty: i.qty + 1 } : i)
-          : [...prev, { ...item, qty: 1 }]; // Add new item
+          ? prev.map(i => (i.id || i.name) === itemId ? { ...i, qty: i.qty + 1 } : i)
+          : [...prev, { ...itemObj, qty: 1 }];
 
-        // Add animation for new item
         if (!existing) {
-          setAnimatingItems(prevSet => new Set([...prevSet, item.id]));
+          setAnimatingItems(prevSet => new Set([...prevSet, itemId]));
           setTimeout(() => {
             setAnimatingItems(prevSet => {
               const newSet = new Set(prevSet);
-              newSet.delete(item.id);
+              newSet.delete(itemId);
               return newSet;
             });
           }, 500);
         }
       } else if (action === 'remove') {
-        newCart = prev.map(i => i.id === item.id ? { ...i, qty: i.qty - 1 } : i).filter(i => i.qty > 0);
+        newCart = prev.map(i => (i.id || i.name) === itemId ? { ...i, qty: i.qty - 1 } : i).filter(i => i.qty > 0);
       } else {
         newCart = prev;
       }
@@ -139,12 +125,8 @@ const OrderPage = () => {
     });
   };
 
-  // Calculate Totals
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
 
-
-
-  // --- RENDER HELPERS ---
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600"></div>
@@ -164,110 +146,103 @@ const OrderPage = () => {
     <div className="min-h-screen bg-gray-50 pb-24 lg:pb-0">
       
       {/* Navbar */}
-      <nav className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-gray-100 px-4 py-3 flex items-center gap-4">
+      <nav className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-gray-100 px-4 py-3 flex items-center gap-4 shadow-sm">
         <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
           <FiArrowLeft className="text-xl text-gray-700" />
         </button>
         <div className="flex-1 min-w-0">
           <h1 className="font-bold text-lg text-gray-900 truncate">{vendor.name}</h1>
-          <p className="text-xs text-green-600 font-medium flex items-center gap-1">
-            {vendor.status} • {vendor.distance}
-          </p>
-        </div>
-        <div className="bg-orange-50 text-orange-700 px-2 py-1 rounded-lg text-xs font-bold flex items-center gap-1">
-          <FiStar className="fill-current" /> {vendor.rating}
+          <div className="flex items-center gap-2 text-xs">
+            <span className={`px-2 py-0.5 rounded-full font-bold ${vendor.status === 'Open' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
+                {vendor.status || 'Open'}
+            </span>
+            <span className="text-gray-500 truncate max-w-[150px] flex items-center gap-1">
+                <FiMapPin size={10} /> {vendor.address || 'Local Vendor'}
+            </span>
+          </div>
         </div>
       </nav>
 
       <div className="max-w-7xl mx-auto p-4 lg:p-6 grid grid-cols-1 lg:grid-cols-3 gap-8">
         
-        {/* LEFT COLUMN: Menu & Hero */}
+        {/* LEFT COLUMN: VENDOR INFO & MENU */}
         <div className="lg:col-span-2 space-y-6">
           
-          {/* Hero Image */}
-          <div className="relative h-48 md:h-64 rounded-2xl overflow-hidden bg-gray-200">
-            {/* Fallback to vendor image if item has no image (since python route generates items dynamically) */}
-            <img src={vendor.image} alt={vendor.name} className="w-full h-full object-cover" />
+          <div className="relative h-48 md:h-64 rounded-2xl overflow-hidden bg-gray-200 shadow-md">
+            <VendorImage src={vendor.image} alt={vendor.name} className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
             <div className="absolute bottom-4 left-4 right-4 text-white">
-              <h2 className="text-3xl font-bold mb-1">{vendor.name}</h2>
+              <h2 className="text-3xl font-bold mb-1 shadow-black drop-shadow-md">{vendor.name}</h2>
               <div className="flex items-center gap-4 text-sm font-medium text-white/90">
-                <span className="flex items-center gap-1"><FiClock /> {vendor.lastSeen ? "Recently Active" : "Offline"}</span>
-                <span className="flex items-center gap-1"><FiMapPin /> {vendor.address}</span>
+                 <span className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-full border border-white/10">
+                    {vendor.status === 'Open' ? 'Accepting Orders' : 'Local Favorite'}
+                 </span>
               </div>
             </div>
           </div>
 
-          {/* Search & Categories Sticky Header */}
-          <div className="sticky top-[64px] z-30 bg-gray-50 py-2 space-y-3">
+          <div className="sticky top-[72px] z-30 bg-gray-50 py-2">
             <div className="relative">
-              <FiSearch className="absolute left-3 top-3 text-gray-400" />
+              <FiSearch className="absolute left-3 top-3.5 text-gray-400" />
               <input 
                 type="text" 
-                placeholder={`Search in ${vendor.name}...`}
+                placeholder={`Search menu...`}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white border border-gray-200 rounded-xl py-2.5 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-sm"
+                className="w-full bg-white border border-gray-200 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-sm transition-all"
               />
-            </div>
-            
-            <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1">
-              {categories.map((cat) => (
-                <button
-                  key={cat.id}
-                  onClick={() => setActiveCategory(cat.id)}
-                  className={`px-4 py-1.5 rounded-full text-sm font-bold whitespace-nowrap transition-all ${
-                    activeCategory === cat.id 
-                      ? 'bg-gray-900 text-white shadow-md' 
-                      : 'bg-white text-gray-600 border border-gray-200 hover:border-orange-300'
-                  }`}
-                >
-                  {cat.name} <span className="text-xs opacity-70 ml-1">({cat.count})</span>
-                </button>
-              ))}
             </div>
           </div>
 
-          {/* Menu Items List */}
           <div className="space-y-4">
-            <h3 className="font-bold text-gray-900 text-lg">Menu Items</h3>
+            <h3 className="font-bold text-gray-900 text-lg flex items-center gap-2">
+                Menu Items <span className="text-sm font-normal text-gray-500">({filteredItems.length})</span>
+            </h3>
+            
             {filteredItems.length === 0 ? (
-              <div className="text-center py-10 bg-white rounded-xl border border-dashed border-gray-200">
-                <p className="text-gray-500">No items found matching your search.</p>
+              <div className="text-center py-16 bg-white rounded-xl border border-dashed border-gray-200">
+                <div className="bg-gray-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <FiSearch className="text-2xl text-gray-400" />
+                </div>
+                <p className="text-gray-900 font-medium">No items found</p>
+                <p className="text-gray-500 text-sm">Try searching for something else</p>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {filteredItems.map((item) => {
-                  const inCart = cart.find(c => c.id === item.id);
+                {filteredItems.map((item, index) => {
+                  const itemObj = typeof item === 'string' ? { name: item, price: 0, id: index } : item;
+                  const itemId = itemObj.id || itemObj.name;
+                  const inCart = cart.find(c => (c.id || c.name) === itemId);
+
                   return (
-                    <div key={item.id} className="bg-white p-4 rounded-xl border border-gray-100 shadow-sm flex gap-4 hover:border-orange-200 transition-colors">
-                      {/* Note: Python route doesn't return specific item images, so we use vendor image or placeholder */}
-                      <div className="w-24 h-24 bg-gray-100 rounded-lg flex-shrink-0 overflow-hidden">
-                        <img src={vendor.image} alt={item.name} className="w-full h-full object-cover opacity-90" />
+                    <div key={itemId} className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex gap-3 hover:border-orange-200 transition-colors group">
+                      <div className="w-20 h-20 bg-gray-100 rounded-lg flex-shrink-0 overflow-hidden relative">
+                        <VendorImage src={itemObj.image} alt={itemObj.name} className="w-full h-full object-cover" />
                       </div>
                       
-                      <div className="flex-1 flex flex-col">
-                        <div className="flex justify-between items-start">
-                          <h4 className="font-bold text-gray-900 line-clamp-1">{item.name}</h4>
-                          {item.popular && <span className="text-[10px] bg-orange-100 text-orange-700 px-2 py-0.5 rounded-full font-bold">POPULAR</span>}
+                      <div className="flex-1 flex flex-col justify-between py-1">
+                        <div>
+                          <h4 className="font-bold text-gray-900 line-clamp-2 leading-tight">{itemObj.name}</h4>
+                          <p className="text-xs text-gray-500 line-clamp-2 mt-1">{itemObj.description}</p>
                         </div>
-                        <p className="text-xs text-gray-500 line-clamp-2 mt-1 mb-2">{item.description}</p>
                         
-                        <div className="mt-auto flex items-center justify-between">
-                          <span className="font-bold text-gray-900">KES {item.price}</span>
+                        <div className="flex items-center justify-between mt-2">
+                          <span className="font-bold text-gray-900">
+                             {itemObj.price > 0 ? `KES ${itemObj.price}` : <span className="text-xs text-gray-400 font-normal">Price on request</span>}
+                          </span>
                           
                           {inCart ? (
-                            <div className="flex items-center gap-3 bg-gray-900 text-white rounded-lg px-2 py-1 shadow-lg">
-                              <button onClick={() => handleCart('remove', item)} className="hover:text-orange-300"><FiMinus size={14}/></button>
-                              <span className="text-sm font-bold w-4 text-center">{inCart.qty}</span>
-                              <button onClick={() => handleCart('add', item)} className="hover:text-orange-300"><FiPlus size={14}/></button>
+                            <div className="flex items-center gap-3 bg-gray-900 text-white rounded-lg px-2 py-1 shadow-md">
+                              <button onClick={() => handleCart('remove', itemObj)} className="hover:text-orange-300 transition-colors"><FiMinus size={12}/></button>
+                              <span className="text-xs font-bold w-3 text-center">{inCart.qty}</span>
+                              <button onClick={() => handleCart('add', itemObj)} className="hover:text-orange-300 transition-colors"><FiPlus size={12}/></button>
                             </div>
                           ) : (
                             <button 
-                              onClick={() => handleCart('add', item)}
-                              className="bg-gray-100 text-gray-900 p-2 rounded-lg hover:bg-orange-100 hover:text-orange-700 transition-colors"
+                              onClick={() => handleCart('add', itemObj)}
+                              className="bg-gray-100 text-gray-900 p-2 rounded-lg hover:bg-orange-100 hover:text-orange-700 transition-colors group-hover:bg-gray-200"
                             >
-                              <FiPlus size={18} />
+                              <FiPlus size={16} />
                             </button>
                           )}
                         </div>
@@ -280,153 +255,74 @@ const OrderPage = () => {
           </div>
         </div>
 
-        {/* RIGHT COLUMN: Dynamic Cart (Desktop) */}
+        {/* RIGHT COLUMN: CART (Desktop) */}
         <div className="hidden lg:block lg:col-span-1">
           <div className={`sticky top-24 bg-white rounded-2xl border border-gray-100 shadow-xl overflow-hidden flex flex-col transition-all duration-300 ${
-            cartCollapsed ? 'h-16' : 'min-h-[400px]'
+            cartCollapsed ? 'h-16' : 'min-h-[400px] max-h-[85vh]'
           }`}>
-            {/* Collapsible Header */}
-            <div className="p-5 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
+            <div className="p-5 border-b border-gray-100 bg-gray-50/80 backdrop-blur flex items-center justify-between cursor-pointer" onClick={() => setCartCollapsed(!cartCollapsed)}>
               <h2 className="font-bold text-gray-900 text-lg flex items-center gap-2">
-                <FiShoppingCart />
-                Your Order
+                <FiShoppingCart /> Your Order
                 {cart.length > 0 && (
                   <span className="bg-orange-600 text-white text-xs px-2 py-1 rounded-full font-bold animate-pulse">
                     {cart.reduce((a, b) => a + b.qty, 0)}
                   </span>
                 )}
               </h2>
-              {cart.length > 0 && (
-                <button
-                  onClick={() => setCartCollapsed(!cartCollapsed)}
-                  className="p-1 hover:bg-gray-200 rounded-full transition-colors"
-                >
-                  <FiChevronDown className={`text-gray-500 transition-transform ${cartCollapsed ? 'rotate-180' : ''}`} />
-                </button>
-              )}
+              <FiChevronDown className={`text-gray-500 transition-transform duration-300 ${cartCollapsed ? 'rotate-180' : ''}`} />
             </div>
 
-            {/* Expandable Content */}
             {!cartCollapsed && (
               <>
-                <div className={`p-5 flex-1 overflow-y-auto space-y-4 custom-scrollbar transition-all duration-300 ${
-                  cart.length === 0 ? 'max-h-32' : 'max-h-[50vh]'
-                }`}>
+                <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
                   {cart.length === 0 ? (
-                    <div className="text-center py-8 text-gray-400">
-                      <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                        <FiShoppingCart className="text-2xl" />
-                      </div>
-                      <p className="font-medium">Your cart is empty</p>
-                      <p className="text-sm">Add items to start ordering</p>
+                    <div className="text-center py-12 text-gray-400">
+                      <FiShoppingCart className="text-3xl mx-auto mb-3 opacity-50" />
+                      <p className="font-medium text-sm">Cart is empty</p>
                     </div>
                   ) : (
-                    <>
-                      {/* Cart Items with Animations */}
-                      {cart.map(item => (
-                        <div
-                          key={item.id}
-                          className={`flex justify-between items-center text-sm p-3 rounded-lg border transition-all duration-300 ${
-                            animatingItems.has(item.id)
-                              ? 'bg-green-50 border-green-200 animate-pulse'
-                              : 'bg-gray-50 border-gray-100 hover:border-orange-200'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3">
-                            <div className="bg-orange-50 text-orange-700 w-6 h-6 rounded flex items-center justify-center font-bold text-xs">
-                              {item.qty}x
-                            </div>
-                            <span className="font-medium text-gray-900 line-clamp-1">{item.name}</span>
+                    cart.map(item => (
+                      <div key={item.id || item.name} className="flex justify-between items-center text-sm p-3 rounded-xl border bg-white border-gray-100">
+                        <div className="flex items-center gap-3">
+                          <div className="bg-orange-50 text-orange-700 w-6 h-6 rounded flex items-center justify-center font-bold text-xs border border-orange-100">
+                            {item.qty}
                           </div>
-                          <div className="flex items-center gap-4">
-                            <span className="text-gray-600 font-medium">KES {(item.price * item.qty)}</span>
-                            <button
-                              onClick={() => handleCart('remove', item)}
-                              className="text-gray-400 hover:text-red-500 transition-colors"
-                            >
-                              <FiTrash2 />
-                            </button>
-                          </div>
+                          <span className="font-medium text-gray-900 line-clamp-1">{item.name}</span>
                         </div>
-                      ))}
-
-                      {/* Dynamic Content Based on Cart State */}
-                      {cart.length > 0 && (
-                        <div className="mt-6 space-y-3">
-                          {/* Landmark Selection */}
-                          <div className="space-y-2">
-                            <label className="text-sm font-medium text-gray-700">Delivery Location</label>
-                            <div className="relative">
-                              <input
-                                type="text"
-                                placeholder="Enter delivery location..."
-                                value={landmarkInput}
-                                onChange={(e) => {
-                                  setLandmarkInput(e.target.value);
-                                  setSelectedLandmark(e.target.value);
-                                  setLandmarkDropdownOpen(true);
-                                }}
-                                onFocus={() => setLandmarkDropdownOpen(true)}
-                                onBlur={() => setTimeout(() => setLandmarkDropdownOpen(false), 200)}
-                                className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-900 placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-orange-500"
-                              />
-
-                              {landmarkDropdownOpen && (
-                                <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                                  {/* Nearby Landmarks */}
-                                  {landmarks.length > 0 && (
-                                    <div className="py-1">
-                                      <div className="px-3 py-1 text-xs font-medium text-gray-500 bg-gray-50">Nearby Landmarks</div>
-                                      {landmarks.map((landmark, index) => (
-                                        <button
-                                          key={index}
-                                          onClick={() => {
-                                            setLandmarkInput(landmark.name);
-                                            setSelectedLandmark(landmark.name);
-                                            setLandmarkDropdownOpen(false);
-                                          }}
-                                          className="w-full px-3 py-2 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-50"
-                                        >
-                                          <div className="flex items-center justify-between">
-                                            <span className="text-sm text-gray-900">{landmark.name}</span>
-                                            <span className="text-xs text-gray-500">{landmark.distance}m</span>
-                                          </div>
-                                        </button>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          </div>
+                        <div className="flex items-center gap-3">
+                          <span className="text-gray-600 font-medium text-xs">{(item.price * item.qty).toLocaleString()}</span>
+                          <button onClick={() => handleCart('remove', item)} className="text-gray-300 hover:text-red-500 transition-colors p-1">
+                            <FiTrash2 size={14} />
+                          </button>
                         </div>
-                      )}
-                    </>
+                      </div>
+                    ))
                   )}
                 </div>
 
-                {/* Checkout Section */}
                 {cart.length > 0 && (
                   <div className="p-5 bg-gray-50 border-t border-gray-100 space-y-4">
-                    {/* Total Display */}
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-gray-900">
-                        KES {cartTotal}
-                      </div>
-                      <div className="text-sm text-gray-500">Total amount</div>
+                    <div className="space-y-3">
+                        <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Delivery Location</label>
+                        <input
+                            type="text"
+                            placeholder="Type location (e.g., Gate B, Floor 2)"
+                            value={deliveryLocation}
+                            onChange={(e) => setDeliveryLocation(e.target.value)}
+                            className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all"
+                        />
                     </div>
 
-                    {/* Checkout Button */}
+                    <div className="flex justify-between items-center pt-2">
+                        <span className="text-gray-500 text-sm">Total Amount</span>
+                        <span className="text-2xl font-bold text-gray-900">KES {cartTotal.toLocaleString()}</span>
+                    </div>
+
                     <button
-                      onClick={() => navigate('/payment', { state: { cart, vendor, landmark: selectedLandmark } })}
-                      disabled={cartTotal < vendor.minOrder}
-                      className={`w-full py-3 rounded-xl font-bold text-white transition-all transform hover:scale-105 ${
-                        cartTotal < vendor.minOrder
-                          ? 'bg-gray-400 cursor-not-allowed'
-                          : 'bg-gray-900 hover:bg-orange-600 shadow-lg hover:shadow-xl'
-                      }`}
+                      onClick={() => navigate('/payment', { state: { cart, vendor, landmark: deliveryLocation } })}
+                      className="w-full py-3.5 rounded-xl font-bold text-white bg-gray-900 hover:bg-orange-600 shadow-lg transition-all"
                     >
-                      {cartTotal < vendor.minOrder ? `Min Order KES ${vendor.minOrder}` : 'Proceed to Checkout'}
+                      Proceed to Checkout
                     </button>
                   </div>
                 )}
@@ -434,184 +330,84 @@ const OrderPage = () => {
             )}
           </div>
         </div>
-
       </div>
 
-      {/* MOBILE FLOATING CART (Bottom Sheet) */}
+      {/* MOBILE BOTTOM BAR */}
       {cart.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 lg:hidden p-4 bg-white border-t border-gray-200 shadow-[0_-5px_15px_rgba(0,0,0,0.1)] z-50">
+        <div className="fixed bottom-0 left-0 right-0 lg:hidden p-4 bg-white border-t border-gray-200 shadow-lg z-50">
           <button
             onClick={() => setShowOrderModal(true)}
-            disabled={cartTotal < vendor.minOrder}
-            className={`w-full py-3.5 px-6 rounded-xl font-bold flex items-center justify-between shadow-xl transition-all transform hover:scale-105 ${
-              cartTotal < vendor.minOrder ? 'bg-gray-300 text-gray-500' : 'bg-gray-900 text-white hover:bg-orange-600'
-            }`}
+            className="w-full py-3.5 px-6 rounded-xl font-bold flex items-center justify-between shadow-xl bg-gray-900 text-white hover:bg-gray-800 transition-colors"
           >
-            <div className="flex items-center gap-2">
-              <span className={`px-2.5 py-0.5 rounded text-sm font-bold animate-pulse ${
-                cartTotal < vendor.minOrder ? 'bg-gray-400 text-gray-600' : 'bg-white/20 text-white'
-              }`}>
+            <div className="flex items-center gap-3">
+              <span className="bg-orange-500 text-white px-2 py-0.5 rounded text-sm font-bold">
                 {cart.reduce((a, b) => a + b.qty, 0)}
               </span>
-              <span>View Order</span>
+              <span className="font-medium">View Order</span>
             </div>
-            <div className="text-right">
-              <div className="text-lg font-bold">KES {cartTotal}</div>
-            </div>
+            <div className="text-lg font-bold">KES {cartTotal.toLocaleString()}</div>
           </button>
         </div>
       )}
 
-      {/* ORDER MODAL */}
+      {/* MOBILE ORDER MODAL */}
       {showOrderModal && (
         <div className="fixed inset-0 z-50 lg:hidden flex items-end justify-center">
-          {/* Backdrop */}
-          <div
-            className="absolute inset-0 bg-black/50 backdrop-blur-sm"
-            onClick={() => setShowOrderModal(false)}
-          />
-
-          {/* Modal Content */}
-          <div className="relative w-full max-w-md bg-white rounded-t-3xl shadow-2xl max-h-[80vh] overflow-hidden">
-            {/* Header */}
-            <div className="p-6 border-b border-gray-100 bg-gray-50/50 flex items-center justify-between">
-              <h2 className="font-bold text-gray-900 text-lg flex items-center gap-2">
-                <FiShoppingCart />
-                Your Order
-                {cart.length > 0 && (
-                  <span className="bg-orange-600 text-white text-xs px-2 py-1 rounded-full font-bold animate-pulse">
-                    {cart.reduce((a, b) => a + b.qty, 0)}
-                  </span>
-                )}
-              </h2>
-              <button
-                onClick={() => setShowOrderModal(false)}
-                className="p-2 hover:bg-gray-200 rounded-full transition-colors"
-              >
-                <FiX className="text-gray-500" />
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setShowOrderModal(false)} />
+          <div className="relative w-full max-w-md bg-white rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col animate-slide-up">
+            
+            <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50 rounded-t-3xl">
+              <h2 className="font-bold text-gray-900 text-lg">Your Order</h2>
+              <button onClick={() => setShowOrderModal(false)} className="p-2 bg-white rounded-full shadow-sm hover:bg-gray-100 text-gray-500">
+                <FiX size={20} />
               </button>
             </div>
 
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto max-h-[60vh] custom-scrollbar">
-              {cart.length === 0 ? (
-                <div className="text-center py-12 px-6 text-gray-400">
-                  <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <FiShoppingCart className="text-2xl" />
-                  </div>
-                  <p className="font-medium">Your cart is empty</p>
-                  <p className="text-sm">Add items to start ordering</p>
-                </div>
-              ) : (
-                <div className="p-6 space-y-4">
-                  {/* Cart Items */}
-                  {cart.map(item => (
-                    <div
-                      key={item.id}
-                      className={`flex justify-between items-center text-sm p-4 rounded-lg border transition-all duration-300 ${
-                        animatingItems.has(item.id)
-                          ? 'bg-green-50 border-green-200 animate-pulse'
-                          : 'bg-gray-50 border-gray-100 hover:border-orange-200'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="bg-orange-50 text-orange-700 w-6 h-6 rounded flex items-center justify-center font-bold text-xs">
-                          {item.qty}x
+            <div className="flex-1 overflow-y-auto p-5 space-y-3 custom-scrollbar">
+               {cart.map(item => (
+                  <div key={item.id || item.name} className="flex justify-between items-center text-sm p-3 bg-white border border-gray-100 rounded-xl shadow-sm">
+                    <div className="flex items-center gap-3">
+                        <div className="bg-orange-50 text-orange-700 w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm">
+                            {item.qty}
                         </div>
-                        <span className="font-medium text-gray-900 line-clamp-1">{item.name}</span>
-                      </div>
-                      <div className="flex items-center gap-4">
-                        <span className="text-gray-600 font-medium">KES {(item.price * item.qty)}</span>
-                        <button
-                          onClick={() => handleCart('remove', item)}
-                          className="text-gray-400 hover:text-red-500 transition-colors"
-                        >
-                          <FiTrash2 />
+                        <span className="font-medium text-gray-900">{item.name}</span>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        <span className="font-bold">KES {(item.price * item.qty).toLocaleString()}</span>
+                        <button onClick={() => handleCart('remove', item)} className="text-gray-400 hover:text-red-500 p-1">
+                            <FiTrash2 size={16} />
                         </button>
-                      </div>
                     </div>
-                  ))}
-
-                  {/* Landmark Selection */}
-                  {cart.length > 0 && (
-                    <div className="mt-6 space-y-3">
-                      <label className="text-sm font-medium text-gray-700">Delivery Location</label>
-                      <div className="relative">
-                        <input
-                          type="text"
-                          placeholder="Enter delivery location..."
-                          value={landmarkInput}
-                          onChange={(e) => {
-                            setLandmarkInput(e.target.value);
-                            setSelectedLandmark(e.target.value);
-                            setLandmarkDropdownOpen(true);
-                          }}
-                          onFocus={() => setLandmarkDropdownOpen(true)}
-                          onBlur={() => setTimeout(() => setLandmarkDropdownOpen(false), 200)}
-                          className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
-                        />
-
-                        {landmarkDropdownOpen && (
-                          <div className="absolute z-10 mt-1 w-full bg-white border border-gray-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
-                            {/* Nearby Landmarks */}
-                            {landmarks.length > 0 && (
-                              <div className="py-1">
-                                <div className="px-3 py-1 text-xs font-medium text-gray-500 bg-gray-50">Nearby Landmarks</div>
-                                {landmarks.map((landmark, index) => (
-                                  <button
-                                    key={index}
-                                    onClick={() => {
-                                      setLandmarkInput(landmark.name);
-                                      setSelectedLandmark(landmark.name);
-                                      setLandmarkDropdownOpen(false);
-                                    }}
-                                    className="w-full px-3 py-2 text-left hover:bg-gray-50 focus:outline-none focus:bg-gray-50"
-                                  >
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-sm text-gray-900">{landmark.name}</span>
-                                      <span className="text-xs text-gray-500">{landmark.distance}m</span>
-                                    </div>
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                  </div>
+                ))}
+                
+                <div className="mt-6 pt-6 border-t border-gray-100">
+                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Delivery Location</label>
+                    <input
+                        type="text"
+                        placeholder="Type location (e.g., Gate B, House 10)"
+                        value={deliveryLocation}
+                        onChange={(e) => setDeliveryLocation(e.target.value)}
+                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    />
                 </div>
-              )}
             </div>
 
-            {/* Footer */}
-            {cart.length > 0 && (
-              <div className="p-6 bg-gray-50 border-t border-gray-100 space-y-4">
-                {/* Total Display */}
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-gray-900">
-                    KES {cartTotal}
-                  </div>
-                  <div className="text-sm text-gray-500">Total amount</div>
-                </div>
-
-                {/* Checkout Button */}
-                <button
-                  onClick={() => {
-                    setShowOrderModal(false);
-                    navigate('/payment', { state: { cart, vendor, landmark: selectedLandmark } });
-                  }}
-                  disabled={cartTotal < vendor.minOrder}
-                  className={`w-full py-3 rounded-xl font-bold text-white transition-all transform hover:scale-105 ${
-                    cartTotal < vendor.minOrder
-                      ? 'bg-gray-400 cursor-not-allowed'
-                      : 'bg-gray-900 hover:bg-orange-600 shadow-lg hover:shadow-xl'
-                  }`}
-                >
-                  {cartTotal < vendor.minOrder ? `Min Order KES ${vendor.minOrder}` : 'Proceed to Checkout'}
-                </button>
+            <div className="p-6 border-t border-gray-100 bg-gray-50">
+              <div className="flex justify-between items-center mb-4">
+                <span className="text-gray-500">Total to pay</span>
+                <span className="text-2xl font-bold text-gray-900">KES {cartTotal.toLocaleString()}</span>
               </div>
-            )}
+              <button
+                onClick={() => {
+                  setShowOrderModal(false);
+                  navigate('/payment', { state: { cart, vendor, landmark: deliveryLocation } });
+                }}
+                className="w-full py-4 rounded-xl font-bold text-white bg-gray-900 hover:bg-orange-600 transition-colors shadow-lg"
+              >
+                Continue to Payment
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -1,227 +1,230 @@
-# local-vendor-app
-## Hyper-Local Vendor Inventory & Finder (MVP v1.0)
+# Local Vendor App (Hyper-Local Inventory & Finder)
 
 ## 📖 Project Overview
-The **Hyper-Local Vendor Inventory & Finder** is a full-stack web application designed to connect customers with nearby food vendors based on real-time menu availability.
+The **Local Vendor App** is a full-stack "Hyper-Local" marketplace designed to bridge the gap between street vendors and nearby customers. Unlike traditional delivery apps, this platform focuses on **real-time data freshness**.
 
-The core goal of this project is to provide a proximity-based search (within **5 km**) that ensures data freshness by only displaying vendors who have updated their location and menu within the last **3 hours**. The application also features integrated payments using the **M-Pesa C2B STK Push** system.
-
-
-### Key Features
-* **Customer:**
-    * **Real-time Search:** Filter vendors by food item, proximity (5km radius), and freshness (<3 hours).
-    * **Map Visualization:** Dynamic interactive map showing vendor locations and details.
-    * **Instant Payment:** Seamless "Pay & Order" functionality via M-Pesa STK Push.
-* **Vendor:**
-    * **Check-In UI:** Mobile-friendly interface for vendors to broadcast their current location and daily menu.
-    * **Auto-Offline:** Vendors are automatically removed from search results if they haven't checked in for over 3 hours.
-* **Administrator:**
-    * **Dashboard:** View a map of all currently active vendors.
-    * **Transaction Logs:** Monitor successful and failed M-Pesa payments.
+The core algorithmic constraint is the **Freshness Timer**: Vendors are only visible in search results if they have "checked in" within the last **3 hours**. This ensures customers never walk to a vendor only to find them closed or moved. The application features geospatial searching (within a 5km radius), route optimization using **Dijkstra's Algorithm (via OSRM)**, and integrated **M-Pesa Express (STK Push)** payments.
 
 ---
 
-## 🛠️ Technologies Used
+## 🚀 Key Features
 
-| Component | Technology | Description |
-| :--- | :--- | :--- |
-| **Frontend** | **React** | SPA with Hooks (useState, useEffect) and client-side routing. |
-| **Styling** | **Tailwind CSS** | Utility-first CSS for responsive mobile-first design. |
-| **Maps** | **Leaflet / Google Maps** | Dynamic marker rendering and user location capture. |
-| **Backend** | **Python (Flask)** | RESTful API with geospatial filtering (Haversine) and JWT Auth. |
-| **Database** | **PostgreSQL** | Relational DB with spatial data logic and normalized schema. |
-| **Payments** | **Safaricom Daraja API** | Secure C2B STK Push integration. |
-| **Version Control** | **Git Flow** | Structured workflow using `main`, `develop`, and `feature/*` branches. |
+### 🛒 Customer Module
+* **Geospatial Search:** Finds vendors within a strict 5km radius using the Haversine formula.
+* **Live Menu Availability:** Filters out vendors who haven't updated their inventory in >3 hours.
+* **Secure Payments:** Integrated M-Pesa C2B STK Push (Daraja API) for instant cashless transactions.
+* **GPS Tracking:** Automatically captures customer location during checkout for precise delivery.
+
+### 🏪 Vendor Module
+* **Location Broadcast:** Mobile-first "Check-In" interface to update GPS coordinates and daily menu.
+* **Order Management:** Real-time view of incoming orders with payment status indicators.
+* **Route Optimization:** Interactive map using **OSRM (Open Source Routing Machine)** to plot the shortest driving/walking path to the customer.
+    * *Note: Location details are locked until payment is confirmed.*
+* **Auto-Offline:** System automatically flags vendors as "Closed" if the freshness timer expires.
+
+### 🛡️ Admin Module
+* **System Dashboard:** Geospatial view of all active vendor nodes.
+* **Transaction Logs:** Detailed audit trail of all M-Pesa transactions (Success/Failure states).
 
 ---
 
-## 🔌 Primary API Endpoints
+## 🛠️ Tech Stack
 
-### 🟢 Public Routes (Customer)
-| Method | Endpoint | Description |
+| Component | Technology | Role |
 | :--- | :--- | :--- |
-| `GET` | `/search` | Search for items. Requires params: `item`, `lat`, `lon`. Filters by 5km radius & 3hr freshness. |
-| `POST` | `/pay` | Triggers M-Pesa STK Push. Payload: `{ vendor_id, amount, customer_phone }`. |
-
-### 🟠 Vendor Routes (Protected)
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `POST` | `/vendor/register` | Register a new vendor account. |
-| `POST` | `/vendor/login` | Authenticate vendor. Returns **Vendor JWT**. |
-| `POST` | `/vendor/update-location` | **(Auth Required)** Updates vendor coordinates and menu items. Resets the 3-hour timer. |
-
-### 🔴 Administrator Routes (RBAC Protected)
-| Method | Endpoint | Description |
-| :--- | :--- | :--- |
-| `POST` | `/admin/login` | Authenticate admin. Returns **Admin JWT**. |
-| `GET` | `/admin/logs` | **(Auth Required)** View transaction logs and system activity. |
+| **Frontend** | React.js (Vite) | SPA Architecture, Hooks, Context API |
+| **Styling** | Tailwind CSS | Responsive mobile-first design system |
+| **Maps** | Leaflet.js | Map rendering, Custom Markers, Polyline routing |
+| **Routing Engine** | OSRM | Shortest path calculation (Dijkstra implementation) |
+| **Backend** | Python (Flask) | RESTful API, Business Logic, Scheduler |
+| **Database** | PostgreSQL | Relational DB with spatial data handling |
+| **ORM** | SQLAlchemy | Database abstraction and migration management |
+| **Payments** | Safaricom Daraja | M-Pesa Express (STK Push) & Callbacks |
+| **Cloud** | Cloudinary | Image hosting for vendor storefronts/menus |
 
 ---
 
 ## ⚙️ Setup & Installation
 
 ### Prerequisites
-* Node.js & npm
-* Python 3.8+
-* PostgreSQL
-* Git
-
-### 0. Clone Repository
-```bash
-# Clone the repository
-git clone <repository-url>
-```
+* Node.js (v16+) & npm
+* Python (v3.10+)
+* PostgreSQL Database
+* **Ngrok** (Required for local M-Pesa testing)
 
 ### 1. Database Setup
-1.  Create a PostgreSQL database named `vendor_inventory_db`.
-2.  Ensure you have the necessary credentials configured.
+Create a local PostgreSQL database:
+```sql
+CREATE DATABASE vendor_inventory_db;
+```
 
-### 2. Backend (Flask)
+### 2. Backend Setup
+
 ```bash
 cd backend
 
-# Create and activate virtual environment
+# Create & Activate Virtual Environment
 python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
+source venv/bin/activate  # Windows: venv\Scripts\activate
 
-# Install dependencies
+# Install Dependencies
 pip install -r requirements.txt
 
-# Configure Environment Variables
-# Create a .env file and add:
-# DATABASE_URL=postgresql://user:password@localhost/vendor_inventory_db
-# SECRET_KEY=your_secret_key
-# MPESA_CONSUMER_KEY=your_key
-# MPESA_CONSUMER_SECRET=your_secret
+# Configure Environment Variables (.env)
+# Create a .env file in /backend with:
+# DATABASE_URL=postgresql://user:pass@localhost/vendor_inventory_db
+# SECRET_KEY=your_jwt_secret
+# CLOUDINARY_CLOUD_NAME=...
+# CLOUDINARY_API_KEY=...
+# CLOUDINARY_API_SECRET=...
+# MPESA_CONSUMER_KEY=...
+# MPESA_CONSUMER_SECRET=...
+# MPESA_PASSKEY=...
+# MPESA_CALLBACK_URL=https://<your-ngrok-url>.ngrok-free.app/api/customer/callback
 
-# Run Database Migrations (if using Flask-Migrate/SQLAlchemy)
+# Run Migrations
 flask db upgrade
 
-# Start the Server
-flask run
+# Start Server
+python run.py
 ```
 
-### 3. Frontend (React)
-```bash
-# Navigate to frontend directory
-cd ../frontend
+### 3. Frontend Setup
 
-# Install dependencies
+```bash
+cd frontend
+
+# Install Dependencies
 npm install
 
-# Configure Environment Variables
-# Create a .env.local file and add:
-# VITE_API_URL=http://localhost:5000
-
-# Start the Development Server
+# Start Dev Server
 npm run dev
+```
+
+### 4. M-Pesa Local Testing (Crucial)
+
+Since Safaricom cannot send callbacks to localhost, you must tunnel your backend:
+
+1. Download and install Ngrok.
+2. Run: `ngrok http 5000`
+3. Copy the forwarding URL (e.g., `https://xyz.ngrok-free.app`).
+4. Update `MPESA_CALLBACK_URL` in your backend `.env`.
+5. Restart the Flask server.
+
+---
+
+## 🔌 API Documentation
+
+### Customer Endpoints
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| GET | `/api/customer/nearby` | Fetch active vendors. Query: lat, lon, radius. |
+| POST | `/api/customer/pay` | Triggers STK Push. Payload includes customerLat & customerLon for routing. |
+
+### Vendor Endpoints
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| POST | `/api/vendor/checkin` | Updates last_checkin and coordinates. Resets timer. |
+| GET | `/api/vendor/orders` | Fetches orders. Includes Customer GPS only if Status = Paid. |
+
+### Admin Endpoints
+
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| GET | `/api/admin/logs` | Returns full transaction history (including failed API attempts). |
+
+---
+
+## 📁 Project Structure
+
+```
+/local-vendor-app
+├── backend/
+│   ├── app/
+│   │   ├── __init__.py
+│   │   ├── config.py              # Flask configuration
+│   │   ├── extensions.py          # Flask extensions (SQLAlchemy, etc.)
+│   │   ├── models.py              # DB Models (User, Order, VendorLocation, Transaction)
+│   │   ├── seed_data.py           # Seed data for testing
+│   │   ├── routes/
+│   │   │   ├── __init__.py
+│   │   │   ├── admin_routes.py    # Admin API endpoints
+│   │   │   ├── auth_routes.py     # Authentication endpoints
+│   │   │   ├── customer_routes.py # Customer API endpoints
+│   │   │   └── vendor_routes.py   # Vendor API endpoints
+│   │   └── utils/
+│   │       ├── __init__.py
+│   │       ├── cloudinary_service.py # Cloudinary image upload
+│   │       ├── decorators.py      # Custom decorators
+│   │       ├── geospatial.py      # Haversine distance logic
+│   │       └── mpesa_handler.py   # Daraja API Logic (STK Push & Callback)
+│   ├── migrations/                # Alembic migration scripts
+│   │   └── versions/              # Migration versions
+│   ├── tests/
+│   │   └── test_backend.py        # Backend unit tests
+│   ├── requirements.txt
+│   ├── run.py                     # Application Entry Point
+│   ├── scheduler.py               # Background task scheduler
+│   ├── seed.py                    # Database seeding script
+│   └── Procfile                   # Deployment config
+│
+└── frontend/
+    ├── src/
+    │   ├── main.jsx               # Application entry point
+    │   ├── App.jsx                # Main Router
+    │   ├── App.css                # Global styles
+    │   ├── index.css              # Tailwind imports
+    │   ├── assets/                # Static assets
+    │   │   └── react.svg
+    │   ├── context/
+    │   │   ├── AuthContext.jsx    # Authentication state management
+    │   │   └── LocationContext.jsx # Location state management
+    │   ├── hooks/
+    │   │   ├── useActivityTracker.js # Activity tracking hook
+    │   │   └── useGeoLocation.js    # Geolocation hook
+    │   ├── pages/
+    │   │   ├── admin/
+    │   │   │   ├── AdminDashboard.jsx # Admin dashboard with map
+    │   │   │   └── AdminLogin.jsx     # Admin login page
+    │   │   ├── customer/
+    │   │   │   ├── landingPage.jsx    # Customer landing page
+    │   │   │   └── mapPage.jsx        # Vendor map search page
+    │   │   ├── orderPay/
+    │   │   │   ├── orderPage.jsx        # Order placement page
+    │   │   │   ├── paymentDetails.jsx   # Payment details with M-Pesa
+    │   │   │   ├── PaymentSuccess.jsx   # Success page
+    │   │   │   └── PaymentFailed.jsx    # Failure page
+    │   │   └── vendor/
+    │   │       ├── newVendorRegister.jsx # Vendor registration
+    │   │       ├── VendorLogin.jsx       # Vendor login
+    │   │       ├── VendorDashboard.jsx   # Vendor dashboard
+    │   │       ├── VendorCheckIn.jsx     # Vendor check-in with GPS
+    │   │       └── viewOrders.jsx        # Order management with OSRM
+    │   └── services/
+    │       ├── api.js              # Axios API service
+    │       ├── authService.js      # Authentication service
+    │       └── mapService.js       # Map & vendor service
+    ├── public/
+    │   ├── images/                 # Public images
+    │   └── vite.svg
+    ├── index.html
+    ├── vite.config.js
+    ├── tailwind.config.js
+    ├── postcss.config.js
+    ├── package.json
+    └── eslint.config.js
 ```
 
 ---
 
-## 🤝 Contribution & Workflow (Git Flow)
-This project strictly adheres to the Git Flow workflow.
+## 🤝 Contribution & Workflow
 
-main: Production-ready code.
+This project follows Git Flow:
+* `main`: Production-ready code.
+* `develop`: Staging/Integration branch.
+* `feature/<name>`: Feature branches.
 
-develop: Integration branch for all features.
+License: MIT
 
-feature/*: Create a new branch for every task (e.g., feature/create-login-ui).
-
-Pull Request Process:
-
-Checkout develop and pull the latest changes.
-
-Create a feature branch: git checkout -b feature/your-feature-name.
-
-Commit changes with clear messages.
-
-Push to remote and open a Pull Request (PR) targeting develop.
-
-Wait for code review and approval before merging.
-
-## 📁 Project Structure
-
-### Project Root
-
-```
-/local-vendor-app
-├── .git/
-├── .gitignore
-├── LICENSE
-├── README.md
-├── backend/
-└── frontend/
-```
-
-### Backend (Python/Flask)
-
-Focus: RESTful API, Geospatial Logic, Database, M-Pesa Integration
-
-```
-/backend
-├── .gitignore
-├── Procfile               # For Render deployment
-├── README.md
-├── requirements.txt       # Python dependencies (flask, sqlalchemy, etc.)
-├── run.py                 # Entry point to start the Flask server
-└── app/
-    ├── __init__.py        # App factory: Initialize Flask, DB, CORS, Migrate
-    ├── config.py          # Configuration classes (Dev, Prod, Testing)
-    ├── extensions.py      # Initialize shared extensions (db, jwt, migrate)
-    ├── models.py          # DB Models: User, VendorLocation, Transaction [cite: 7, 41]
-    ├── routes/            # API Blueprints
-    │   ├── __init__.py
-    │   ├── admin_routes.py    # GET /logs, Dashboard stats [cite: 51]
-    │   ├── auth_routes.py     # Login/Register (JWT generation) [cite: 66]
-    │   ├── customer_routes.py # GET /search, POST /pay [cite: 41]
-    │   └── vendor_routes.py   # POST /update-location [cite: 41]
-    └── utils/             # Helper logic
-        ├── decorators.py      # Custom Auth decorators (@token_required) [cite: 66]
-        ├── geospatial.py      # Haversine formula implementation [cite: 41]
-        └── mpesa_handler.py   # STK Push & Callback logic [cite: 35]
-```
-
-### Frontend (React + Tailwind)
-
-Focus: SPA, Maps, Dynamic State, Responsive UI
-
-```
-/frontend
-├── .gitignore
-├── README.md
-├── eslint.config.js
-├── index.html
-├── node_modules/
-├── package-lock.json
-├── package.json           # Dependencies (react, axios, leaflet, etc.)
-├── postcss.config.js
-├── public/
-├── src/
-│   ├── App.css
-│   ├── App.jsx            # Main routing (React Router) [cite: 7]
-│   ├── assets/            # Images, icons, logos
-│   │   └── react.svg
-│   ├── context/           # Global State Management [cite: 7]
-│   │   ├── AuthContext.jsx    # Stores JWTs (Vendor/Admin)
-│   │   └── LocationContext.jsx# Stores Customer Lat/Lon
-│   ├── hooks/             # Custom React Hooks
-│   │   └── useGeoLocation.js  # Wrapper for navigator.geolocation [cite: 44]
-│   ├── index.css          # Global styles / Tailwind directives
-│   ├── main.jsx           # React entry point
-│   ├── pages/             # Full Page Views
-│   │   ├── admin/
-│   │   │   ├── AdminDashboard.jsx # Admin Map & Logs [cite: 51]
-│   │   │   └── AdminLogin.jsx
-│   │   ├── customer/
-│   │   │   └── Home.jsx       # Customer Map View (Public) [cite: 47]
-│   │   └── vendor/
-│   │       ├── VendorCheckIn.jsx  # Location/Menu Update Form [cite: 49]
-│   │       └── VendorLogin.jsx    # Vendor Auth Page
-│   └── services/          # API Integration (Axios) [cite: 62]
-│       ├── api.js             # Axios instance (Base URL, Interceptors)
-│       ├── authService.js     # Login/Register calls
-│       └── mapService.js      # Fetch vendors (GET /search)
-├── tailwind.config.js     # Tailwind CSS configuration [cite: 44]
-└── vite.config.js         # Build tool config (or webpack.config.js)
-```

@@ -1,133 +1,103 @@
-import React, { useState, useContext } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Mail, Lock, Loader2, Eye, EyeOff, ShieldCheck } from 'lucide-react';
-import { authService } from '../../services/authService';
-import { AuthContext } from '../../context/AuthContext';
+import { Shield, Lock, Loader2, AlertTriangle, ArrowLeft } from 'lucide-react';
+import api from '../../services/api';
 
 const AdminLogin = () => {
   const navigate = useNavigate();
-  const { adminLogin } = useContext(AuthContext);
   const [formData, setFormData] = useState({ email: '', password: '' });
-  const [isLoading, setIsLoading] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setIsLoading(true);
-    setError(null);
+    setLoading(true);
+    setError('');
 
     try {
-      const response = await authService.adminLogin(formData.email, formData.password);
-      adminLogin(response.access_token);
+      // Correct endpoint as defined in backend blueprint
+      const response = await api.post('/admin/login', formData);
+      
+      // Store token with a specific key to distinguish from vendor/user
+      localStorage.setItem('admin_token', response.data.token);
+      
       navigate('/admin/dashboard');
     } catch (err) {
-      setError(err.message || 'Login failed. Please check your credentials.');
+      console.error(err);
+      setError(err.response?.data?.error || 'Access Denied: Invalid credentials or insufficient permissions.');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   return (
-    // FULL SCREEN WRAPPER
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-gradient-to-br from-orange-50 via-orange-100 to-orange-200">
+    <div className="min-h-screen flex items-center justify-center bg-slate-900 px-4 relative">
       
-      {/* LOGIN CARD */}
-      <div className="w-full max-w-md bg-white p-8 sm:p-10 rounded-2xl shadow-2xl border border-white/50 mx-4">
-        
-        {/* Header */}
+      {/* Back Button */}
+      <div className="absolute top-6 left-6">
+        <button 
+          onClick={() => navigate('/')}
+          className="flex items-center gap-2 text-slate-400 hover:text-white transition-colors"
+        >
+           <ArrowLeft className="h-4 w-4" /> Back to Home
+        </button>
+      </div>
+
+      <div className="max-w-md w-full bg-slate-800 p-8 rounded-2xl shadow-2xl border border-slate-700">
         <div className="text-center mb-8">
-          <div className="mx-auto h-14 w-14 bg-orange-100 rounded-xl flex items-center justify-center mb-4">
-            <ShieldCheck className="h-8 w-8 text-orange-600" />
+          <div className="mx-auto h-16 w-16 bg-red-900/30 rounded-full flex items-center justify-center mb-4 border border-red-500/30 shadow-[0_0_15px_rgba(239,68,68,0.5)]">
+            <Shield className="h-8 w-8 text-red-500" />
           </div>
-          <h2 className="text-2xl font-bold text-gray-900">Admin Portal</h2>
-          <p className="text-sm text-gray-500 mt-2">
-            Hyper-Local Inventory & Payments Control
-          </p>
+          <h2 className="text-2xl font-bold text-white tracking-wide">Admin Portal</h2>
+          <p className="mt-2 text-slate-400 text-sm">Restricted Access. Authorized personnel only.</p>
         </div>
 
-        {/* Error Alert */}
         {error && (
-          <div className="mb-6 p-3 bg-red-50 border border-red-100 text-red-600 text-sm rounded-lg text-center font-medium">
-            {error}
+          <div className="mb-6 p-4 bg-red-900/20 border border-red-500/50 rounded-lg flex items-center gap-3 text-red-400 animate-fadeIn">
+            <AlertTriangle className="h-5 w-5 flex-shrink-0" />
+            <span className="text-sm">{error}</span>
           </div>
         )}
 
-        {/* Form */}
         <form onSubmit={handleSubmit} className="space-y-6">
-          
-          {/* Email Input */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-              Email Address
-            </label>
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Mail className="h-5 w-5 text-gray-400" />
-              </div>
-              <input
-                type="email"
-                required
-                className="block w-full pl-10 pr-3 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors outline-none"
-                placeholder="admin@hyperlocal.sys"
-                value={formData.email}
-                onChange={(e) => setFormData({...formData, email: e.target.value})}
-              />
-            </div>
+            <label className="block text-sm font-medium text-slate-300 mb-1">System Email</label>
+            <input
+              name="email"
+              type="email"
+              required
+              placeholder="admin@hyperlocal.com"
+              className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg px-4 py-3 focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none transition-all placeholder-slate-600"
+              onChange={handleChange}
+            />
           </div>
-
-          {/* Password Input */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-1.5">
-              Password
-            </label>
+            <label className="block text-sm font-medium text-slate-300 mb-1">Secure Key</label>
             <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Lock className="h-5 w-5 text-gray-400" />
-              </div>
-              <input
-                type={showPassword ? 'text' : 'password'}
+                <Lock className="absolute left-3 top-3.5 h-5 w-5 text-slate-500" />
+                <input
+                name="password"
+                type="password"
                 required
-                className="block w-full pl-10 pr-10 py-3 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 transition-colors outline-none"
                 placeholder="••••••••"
-                value={formData.password}
-                onChange={(e) => setFormData({...formData, password: e.target.value})}
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-orange-600 cursor-pointer"
-              >
-                {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-              </button>
+                className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg pl-10 pr-4 py-3 focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none transition-all placeholder-slate-600"
+                onChange={handleChange}
+                />
             </div>
           </div>
 
-          {/* Submit Button */}
           <button
             type="submit"
-            disabled={isLoading}
-            className="w-full flex justify-center py-3.5 px-4 border border-transparent rounded-xl shadow-sm text-sm font-bold text-white bg-orange-600 hover:bg-orange-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-orange-500 disabled:opacity-70 disabled:cursor-not-allowed transition-all"
+            disabled={loading}
+            className="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg transition-all flex items-center justify-center gap-2 transform active:scale-95 shadow-lg shadow-red-900/20"
           >
-            {isLoading ? (
-              <div className="flex items-center">
-                <Loader2 className="animate-spin -ml-1 mr-2 h-4 w-4" />
-                Accessing Admin dashboard...
-              </div>
-            ) : (
-              'Sign In'
-            )}
+            {loading ? <Loader2 className="animate-spin h-5 w-5" /> : 'Authenticate System'}
           </button>
-
         </form>
-
-        {/* Footer */}
-        <div className="mt-6 text-center">
-          <a href="#" className="text-sm font-medium text-orange-600 hover:text-orange-500 hover:underline">
-            Forgot your secure key?
-          </a>
-        </div>
-
       </div>
     </div>
   );
