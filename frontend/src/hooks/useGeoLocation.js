@@ -1,77 +1,52 @@
-import { useState, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 
-/**
- * Custom hook to get user's current geolocation
- * Returns location object with lat, lon and any errors
- */
-export const useGeoLocation = (updateLocation) => {
-  const [location, setLocation] = useState(null);
-  const [error, setError] = useState(null);
-  const [loading, setLoading] = useState(true);
+export const useGeoLocation = () => {
+    const [location, setLocation] = useState(null);
+    const [error, setError] = useState(null);
+    const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    // Check if geolocation is supported
-    if (!navigator.geolocation) {
-      setError('Geolocation is not supported by your browser');
-      setLoading(false);
-      return;
-    }
+    const getGeoLocation = useCallback(() => {
+        if (!navigator.geolocation) {
+            setError('Geolocation is not supported by your browser');
+            return;
+        }
 
-    // Success callback
-    const onSuccess = (position) => {
-      setLocation({
-        lat: position.coords.latitude,
-        lon: position.coords.longitude,
-        accuracy: position.coords.accuracy
-      });
-      setError(null);
-      setLoading(false);
-    };
+        setLoading(true);
+        setError(null);
 
-    // Error callback
-    const onError = (error) => {
-      let errorMessage = 'Unable to retrieve your location';
-      
-      switch (error.code) {
-        case error.PERMISSION_DENIED:
-          errorMessage = 'Location permission denied. Please enable location access in your browser settings.';
-          break;
-        case error.POSITION_UNAVAILABLE:
-          errorMessage = 'Location information is unavailable.';
-          break;
-        case error.TIMEOUT:
-          errorMessage = 'Location request timed out.';
-          break;
-        default:
-          errorMessage = 'An unknown error occurred while getting your location.';
-      }
-      
-      setError(errorMessage);
-      setLoading(false);
-    };
+        navigator.geolocation.getCurrentPosition(
+            (position) => {
+                setLocation({
+                    lat: position.coords.latitude,
+                    lon: position.coords.longitude,
+                });
+                setLoading(false);
+            },
+            (err) => {
+                // Handle specific error codes
+                switch(err.code) {
+                    case err.PERMISSION_DENIED:
+                        setError("User denied the request for Geolocation.");
+                        break;
+                    case err.POSITION_UNAVAILABLE:
+                        setError("Location information is unavailable.");
+                        break;
+                    case err.TIMEOUT:
+                        setError("The request to get user location timed out.");
+                        break;
+                    default:
+                        setError("An unknown error occurred.");
+                        break;
+                }
+                setLoading(false);
+            },
+            {
+                enableHighAccuracy: true,
+                timeout: 15000, // Increased to 15 seconds
+                maximumAge: 0,
+            }
+        );
+    }, []);
 
-    // Get current position
-    navigator.geolocation.getCurrentPosition(onSuccess, onError, {
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 0
-    });
-
-    // Optional: Watch position for continuous updates
-    // Uncomment if you want real-time location updates
-    /*
-    const watchId = navigator.geolocation.watchPosition(onSuccess, onError, {
-      enableHighAccuracy: true,
-      timeout: 10000,
-      maximumAge: 0
-    });
-
-    // Cleanup
-    return () => {
-      navigator.geolocation.clearWatch(watchId);
-    };
-    */
-  }, []);
-
-  return { location, error, loading };
+    return { location, error, loading, getGeoLocation };
 };

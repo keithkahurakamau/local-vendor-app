@@ -1,512 +1,226 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import {
-  Store, User, Mail, Phone, Upload, Lock,
-  Loader2, Eye, EyeOff, MapPin, Crosshair, Navigation, AlertCircle, CheckCircle
-} from 'lucide-react';
-import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
-import L from 'leaflet';
+// ADDED: Eye, EyeOff
+import { User, Mail, Lock, Phone, MapPin, Store, Upload, Loader2, AlertCircle, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { authService } from '../../services/authService';
+import { vendorAPI } from '../../services/api';
 
-// Fix for Leaflet default marker icons
-import icon from 'leaflet/dist/images/marker-icon.png';
-import iconShadow from 'leaflet/dist/images/marker-shadow.png';
+// --- SAFE IMAGE COMPONENT ---
+const SafeHeroImage = ({ src, alt }) => {
+  const [hasError, setHasError] = useState(false);
 
-let DefaultIcon = L.icon({
-    iconUrl: icon,
-    shadowUrl: iconShadow,
-    iconSize: [25, 41],
-    iconAnchor: [12, 41]
-});
-L.Marker.prototype.options.icon = DefaultIcon;
+  if (hasError || !src) {
+    return (
+      <div className="absolute inset-0 bg-gray-900 w-full h-full flex flex-col items-center justify-center text-gray-600 opacity-60">
+        <Store className="h-16 w-16 mb-2 opacity-20" />
+      </div>
+    );
+  }
 
-// --- Helper: Update Map View when coordinates change ---
-const MapUpdater = ({ center, zoom }) => {
-  const map = useMap();
-  useEffect(() => {
-    if (center) {
-      map.flyTo(center, zoom);
-    }
-  }, [center, zoom, map]);
-  return null;
-};
-
-// --- Helper: Handle Manual Clicks on Map ---
-const LocationMarker = ({ position, setPosition, setFormData }) => {
-  useMapEvents({
-    click(e) {
-      setPosition(e.latlng);
-      setFormData(prev => ({
-        ...prev,
-        latitude: e.latlng.lat,
-        longitude: e.latlng.lng
-      }));
-    },
-  });
-
-  return position === null ? null : (
-    <Marker position={position}></Marker>
+  return (
+    <img 
+      src={src} 
+      alt={alt} 
+      className="absolute inset-0 w-full h-full object-cover opacity-60" 
+      onError={() => setHasError(true)} 
+    />
   );
 };
 
-const VendorRegister = () => {
+const NewVendorRegister = () => {
   const navigate = useNavigate();
   
-  // Form State
   const [formData, setFormData] = useState({
-    businessName: '',
-    ownerName: '',
+    username: '',
     email: '',
-    phone: '',
-    address: '', 
-    latitude: '',
-    longitude: '',
     password: '',
-    confirmPassword: '',
-    image: null
+    phone_number: '',
+    business_name: '',
+    storefront_image: null 
   });
+
+  const [imagePreview, setImagePreview] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
   
-  // UI State
-  const [isLoading, setIsLoading] = useState(false);
-  const [isLocating, setIsLocating] = useState(false);
-  const [locationError, setLocationError] = useState(null);
+  // ADDED: State for password visibility
   const [showPassword, setShowPassword] = useState(false);
-  const [dragActive, setDragActive] = useState(false);
-  
-  // Map State
-  const [markerPosition, setMarkerPosition] = useState(null);
-  const [mapCenter, setMapCenter] = useState([-1.2921, 36.8219]); // Default: Nairobi
-  const [mapZoom, setMapZoom] = useState(13);
 
-  // --- HANDLER: Get GPS Location ---
-  const handleGetLocation = () => {
-    setIsLocating(true);
-    setLocationError(null);
-
-    if (!navigator.geolocation) {
-      setLocationError("Geolocation is not supported by your browser.");
-      setIsLocating(false);
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        const newPos = { lat: latitude, lng: longitude };
-        
-        // Update State
-        setMarkerPosition(newPos);
-        setMapCenter([latitude, longitude]);
-        setMapZoom(16);
-        setFormData(prev => ({
-          ...prev,
-          latitude: latitude,
-          longitude: longitude
-        }));
-        
-        setIsLocating(false);
-      },
-      (error) => {
-        console.error("Error getting location:", error);
-        switch(error.code) {
-          case error.PERMISSION_DENIED:
-            setLocationError("Location permission denied. Please click the map to set location manually.");
-            break;
-          case error.POSITION_UNAVAILABLE:
-            setLocationError("Location information is unavailable.");
-            break;
-          case error.TIMEOUT:
-            setLocationError("The request to get user location timed out.");
-            break;
-          default:
-            setLocationError("An unknown error occurred.");
-        }
-        setIsLocating(false);
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
-  };
-
-  // General Input Handler
   const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
-  };
-
-  // Image Handlers
-  const handleDrag = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === "dragenter" || e.type === "dragover") setDragActive(true);
-    else if (e.type === "dragleave") setDragActive(false);
-  };
-
-  const handleDrop = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      setFormData(prev => ({ ...prev, image: e.dataTransfer.files[0] }));
-    }
+    setFormData({ ...formData, [e.target.name]: e.target.value });
   };
 
   const handleImageChange = (e) => {
-    if (e.target.files && e.target.files[0]) {
-      setFormData(prev => ({ ...prev, image: e.target.files[0] }));
+    const file = e.target.files[0];
+    if (file) {
+      if (file.size > 5 * 1024 * 1024) {
+        setError("Image size too large (Max 5MB)");
+        return;
+      }
+      setFormData({ ...formData, storefront_image: file });
+      setImagePreview(URL.createObjectURL(file));
+      setError('');
     }
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setIsLoading(true);
-
-    if (!formData.latitude || !formData.longitude) {
-      alert("Please set a location on the map.");
-      setIsLoading(false);
-      return;
-    }
-
-    if (formData.password !== formData.confirmPassword) {
-      alert("Passwords do not match.");
-      setIsLoading(false);
-      return;
-    }
+    setLoading(true);
+    setError('');
 
     try {
-      await authService.vendorRegister(
-        formData.email,
-        formData.phone,
-        formData.password,
-        formData.businessName
-      );
+      let finalImageUrl = "";
 
-      // Registration successful
-      alert("Registration successful! Please login to continue.");
-      navigate('/vendor/login');
-    } catch (error) {
-      console.error('Registration error:', error);
-      alert(error.message || "Registration failed. Please try again.");
+      // 1. Upload Image First
+      if (formData.storefront_image) {
+        try {
+          const uploadRes = await vendorAPI.uploadImage(formData.storefront_image);
+          finalImageUrl = uploadRes.url;
+        } catch (uploadError) {
+          console.error("Image upload failed", uploadError);
+          throw new Error("Failed to upload storefront image. Please try again.");
+        }
+      }
+
+      // 2. Register
+      const registerPayload = {
+        username: formData.username,
+        email: formData.email,
+        password: formData.password,
+        role: 'vendor',
+        phone_number: formData.phone_number,
+        business_name: formData.business_name,
+        storefront_image_url: finalImageUrl
+      };
+
+      await authService.register(registerPayload);
+      navigate('/vendor/dashboard');
+
+    } catch (err) {
+      console.error(err);
+      setError(err.response?.data?.error || err.message || 'Registration failed');
     } finally {
-      setIsLoading(false);
+      setLoading(false);
     }
   };
 
   return (
-    // CRITICAL FIX: fixed inset-0 z-50 covers the whole screen.
-    // overflow-y-auto allows scrolling for the long form.
-    <div className="fixed inset-0 z-50 w-screen h-screen bg-gradient-to-br from-orange-50 via-orange-100 to-orange-200 font-sans overflow-y-auto">
+    // UPDATED: Changed bg-orange-50/50 to bg-orange-500
+    <div className="min-h-screen flex items-center justify-center bg-orange-500 py-12 px-4 sm:px-6 lg:px-8 relative">
       
-      {/* Header */}
-      <nav className="w-full px-6 py-4 flex items-center justify-between max-w-7xl mx-auto">
-        <div className="flex items-center gap-2">
-          <div className="h-10 w-10 bg-orange-600 rounded-xl flex items-center justify-center shadow-md">
-            <Store className="h-6 w-6 text-white" />
-          </div>
-          <span className="text-xl font-bold text-gray-900 hidden sm:block">Hyper-Local</span>
-        </div>
+      {/* ADDED: Escape / Back to Home Button */}
+      <div className="absolute top-6 left-6 z-20">
         <Link 
-          to="/vendor/login"
-          className="px-6 py-2 bg-white border border-gray-200 text-gray-700 font-semibold rounded-xl shadow-sm hover:bg-gray-50 hover:text-orange-600 transition-colors"
+          to="/" 
+          className="flex items-center gap-2 text-gray-500 hover:text-orange-600 transition-colors font-medium bg-white px-4 py-2 rounded-full shadow-sm hover:shadow-md border border-gray-100"
         >
-          Login
+           <ArrowLeft className="h-4 w-4" /> Back to Home
         </Link>
-      </nav>
+      </div>
 
-      {/* Main Container */}
-      <div className="max-w-5xl mx-auto px-4 sm:px-6 pb-12">
+      <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 bg-white rounded-3xl shadow-xl overflow-hidden relative z-10">
         
-        <form onSubmit={handleSubmit} className="bg-white rounded-3xl shadow-xl border border-white/50 overflow-hidden mb-10">
+        {/* Left Side (Hero) */}
+        <div className="hidden md:block relative bg-gray-900">
+          <SafeHeroImage src="/images/hero2.jpg" alt="Vendor Registration" />
           
-          <div className="px-8 pt-8 pb-4 border-b border-gray-100">
-             <h1 className="text-2xl font-bold text-gray-900">Vendor Registration</h1>
-             <p className="text-gray-500 text-sm mt-1">Join the network and start selling within your 5km radius.</p>
+          <div className="relative z-10 p-12 h-full flex flex-col justify-between text-white">
+            <div>
+              <h2 className="text-4xl font-bold mb-4">Partner with us</h2>
+              <p className="text-lg text-gray-200">Join thousands of local vendors growing their business with HyperLocal.</p>
+            </div>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-orange-500 rounded-lg"><Store className="h-6 w-6" /></div>
+                <div><p className="font-bold">Reach More Customers</p><p className="text-sm text-gray-300">Expand your delivery radius instantly</p></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Right Side (Form) */}
+        <div className="p-8 sm:p-12">
+          <div className="mb-8">
+            <h2 className="text-3xl font-bold text-gray-900">Create Vendor Account</h2>
+            <p className="mt-2 text-gray-600">Start selling in your neighborhood today</p>
           </div>
 
-          <div className="p-8 space-y-10">
-            
-            {/* Vendor Details */}
-            <section>
-              <h3 className="text-sm font-bold text-orange-600 uppercase tracking-wider mb-6 flex items-center gap-2">
-                <Store className="h-4 w-4" /> Vendor Details
-              </h3>
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 flex items-center gap-3 rounded-r-lg">
+              <AlertCircle className="h-5 w-5 text-red-500" />
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
+          )}
+
+          <form className="space-y-5" onSubmit={handleSubmit}>
+            <div className="grid grid-cols-1 gap-5">
+              <div className="relative">
+                <User className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
+                <input name="username" type="text" required placeholder="Full Name" className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none" value={formData.username} onChange={handleChange} />
+              </div>
+              <div className="relative">
+                <Store className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
+                <input name="business_name" type="text" required placeholder="Business Name" className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none" value={formData.business_name} onChange={handleChange} />
+              </div>
+              <div className="relative">
+                <Mail className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
+                <input name="email" type="email" required placeholder="Email Address" className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none" value={formData.email} onChange={handleChange} />
+              </div>
+              <div className="relative">
+                <Phone className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
+                <input name="phone_number" type="tel" required placeholder="M-Pesa Phone Number" className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none" value={formData.phone_number} onChange={handleChange} />
+              </div>
               
-              <div className="space-y-6">
-                {/* Business Name */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Business Name</label>
-                  <input
-                    type="text"
-                    name="businessName"
-                    required
-                    placeholder="e.g. Mama Oliech's Kitchen"
-                    className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all"
-                    value={formData.businessName}
-                    onChange={handleChange}
-                  />
-                </div>
-
-                {/* Contact Info Grid */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Owner Full Name</label>
-                    <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                      <input
-                        type="text"
-                        name="ownerName"
-                        required
-                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-orange-500 outline-none"
-                        placeholder="John Doe"
-                        value={formData.ownerName}
-                        onChange={handleChange}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Email Address</label>
-                    <div className="relative">
-                      <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                      <input
-                        type="email"
-                        name="email"
-                        required
-                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-orange-500 outline-none"
-                        placeholder="vendor@mail.com"
-                        value={formData.email}
-                        onChange={handleChange}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-2">Phone Number</label>
-                    <div className="relative">
-                      <Phone className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-gray-400" />
-                      <input
-                        type="tel"
-                        name="phone"
-                        required
-                        className="w-full pl-10 pr-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-orange-500 outline-none"
-                        placeholder="0712 345 678"
-                        value={formData.phone}
-                        onChange={handleChange}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* --- LOCATION SECTION --- */}
-                <div className="bg-orange-50/50 p-6 rounded-2xl border border-orange-100">
-                   <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-4">
-                      <div>
-                        <label className="block text-sm font-bold text-gray-900">Store Location</label>
-                        <p className="text-xs text-gray-500 mt-1">We need your exact coordinates for the 5km search.</p>
-                      </div>
-                      
-                      {/* GPS Button */}
-                      <button
-                        type="button"
-                        onClick={handleGetLocation}
-                        disabled={isLocating}
-                        className="flex items-center justify-center gap-2 px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white text-sm font-semibold rounded-lg shadow-sm transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
-                      >
-                        {isLocating ? (
-                          <>
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            Detecting...
-                          </>
-                        ) : (
-                          <>
-                            <Navigation className="h-4 w-4 fill-current" />
-                            Use Current Location
-                          </>
-                        )}
-                      </button>
-                   </div>
-                   
-                   {/* Location Error Alert */}
-                   {locationError && (
-                     <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg flex items-center gap-2 text-red-700 text-sm">
-                       <AlertCircle className="h-4 w-4 shrink-0" />
-                       {locationError}
-                     </div>
-                   )}
-
-                   {/* Map Container */}
-                   <div className="h-72 w-full rounded-xl overflow-hidden border-2 border-white shadow-sm relative z-0">
-                      <MapContainer 
-                        center={mapCenter} 
-                        zoom={mapZoom} 
-                        style={{ height: '100%', width: '100%' }}
-                      >
-                        <TileLayer
-                          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                        />
-                        <MapUpdater center={mapCenter} zoom={mapZoom} />
-                        <LocationMarker 
-                          position={markerPosition} 
-                          setPosition={setMarkerPosition} 
-                          setFormData={setFormData}
-                        />
-                      </MapContainer>
-                      
-                      {/* Manual Pin Instruction Overlay */}
-                      {!markerPosition && !isLocating && (
-                         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-[400] bg-white/95 backdrop-blur px-4 py-2 rounded-full shadow-lg text-xs font-semibold text-gray-700 border border-gray-200 pointer-events-none flex items-center gap-2">
-                            <Crosshair className="h-3 w-3 text-orange-600" />
-                            Tap map to set pin manually
-                         </div>
-                      )}
-                   </div>
-
-                   {/* Coordinates & Custom Address Field */}
-                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-                      {/* Coordinates (Read Only) */}
-                      <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">GPS Coordinates</label>
-                        <div className="relative">
-                          <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-orange-500" />
-                          <input 
-                            type="text" 
-                            readOnly 
-                            className="w-full pl-9 pr-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm text-gray-600 font-mono"
-                            value={formData.latitude ? `${formData.latitude.toFixed(6)}, ${formData.longitude.toFixed(6)}` : 'Not set'}
-                          />
-                        </div>
-                      </div>
-
-                      {/* Manual Address Input */}
-                      <div>
-                        <label className="block text-xs font-medium text-gray-500 mb-1">Building / Landmark / Street</label>
-                        <input 
-                          type="text" 
-                          name="address"
-                          className="w-full px-3 py-2.5 bg-white border border-gray-200 rounded-lg text-sm focus:ring-2 focus:ring-orange-500 outline-none"
-                          placeholder="e.g. Bazaar Plaza, 2nd Floor"
-                          value={formData.address}
-                          onChange={handleChange}
-                        />
-                      </div>
-                   </div>
-                </div>
-
-                {/* Image Upload */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Storefront Image</label>
-                  <div
-                    className={`relative w-full h-40 border-2 border-dashed rounded-2xl flex flex-col items-center justify-center cursor-pointer transition-colors ${
-                      dragActive ? 'border-orange-500 bg-orange-50' : 'border-gray-300 bg-gray-50 hover:bg-gray-100'
-                    }`}
-                    onDragEnter={handleDrag}
-                    onDragLeave={handleDrag}
-                    onDragOver={handleDrag}
-                    onDrop={handleDrop}
-                  >
-                    <input 
-                      type="file" 
-                      accept="image/*" 
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                      onChange={handleImageChange}
-                    />
-                    {formData.image ? (
-                      <div className="flex items-center text-green-600 gap-2">
-                        <CheckCircle className="h-6 w-6" />
-                        <span className="font-medium">{formData.image.name}</span>
-                      </div>
-                    ) : (
-                      <>
-                        <div className="p-3 bg-white rounded-full shadow-sm mb-2">
-                           <Upload className="h-6 w-6 text-orange-500" />
-                        </div>
-                        <p className="text-sm text-gray-500">
-                          <span className="font-semibold text-orange-600">Click to upload</span> or drag and drop
-                        </p>
-                      </>
-                    )}
-                  </div>
-                </div>
+              {/* UPDATED: Password Field with Toggle */}
+              <div className="relative">
+                <Lock className="absolute left-3 top-3.5 h-5 w-5 text-gray-400" />
+                <input 
+                  name="password" 
+                  type={showPassword ? "text" : "password"} 
+                  required 
+                  placeholder="Create Password" 
+                  className="w-full pl-10 pr-12 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none" 
+                  value={formData.password} 
+                  onChange={handleChange} 
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-3.5 text-gray-400 hover:text-gray-600 focus:outline-none"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-5 w-5" />
+                  ) : (
+                    <Eye className="h-5 w-5" />
+                  )}
+                </button>
               </div>
-            </section>
-
-            <div className="border-t border-gray-100"></div>
-
-            {/* Security Section */}
-            <section>
-              <h3 className="text-sm font-bold text-orange-600 uppercase tracking-wider mb-6 flex items-center gap-2">
-                <Lock className="h-4 w-4" /> Security Details
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      name="password"
-                      required
-                      placeholder="••••••••"
-                      className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-orange-500 outline-none"
-                      value={formData.password}
-                      onChange={handleChange}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-orange-600"
-                    >
-                      {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-2">Confirm Password</label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      name="confirmPassword"
-                      required
-                      placeholder="••••••••"
-                      className="w-full px-4 py-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-orange-500 outline-none"
-                      value={formData.confirmPassword}
-                      onChange={handleChange}
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-orange-600"
-                    >
-                      {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            {/* Submit */}
-            <div className="pt-4">
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full py-4 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-bold shadow-lg shadow-orange-200 transition-all duration-300 flex items-center justify-center gap-2 disabled:opacity-70"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="animate-spin h-5 w-5" />
-                    <span>Processing Registration...</span>
-                  </>
+              
+              <div className="border-2 border-dashed border-gray-300 rounded-xl p-4 text-center hover:bg-gray-50 transition-colors cursor-pointer relative">
+                <input type="file" accept="image/*" onChange={handleImageChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+                {imagePreview ? (
+                  <img src={imagePreview} alt="Preview" className="h-32 w-full object-cover rounded-lg" />
                 ) : (
-                  'Complete Registration'
+                  <div className="py-4">
+                    <div className="bg-orange-100 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-2 text-orange-600"><Upload className="h-6 w-6" /></div>
+                    <p className="text-sm font-medium text-gray-900">Upload Storefront Image</p>
+                  </div>
                 )}
-              </button>
-              <p className="text-center text-sm text-gray-500 mt-4">
-                By registering, you agree to our Terms of Service and Privacy Policy.
-              </p>
+              </div>
             </div>
 
-          </div>
-        </form>
+            <button type="submit" disabled={loading} className="w-full bg-gray-900 text-white py-4 rounded-xl font-bold text-lg hover:bg-orange-600 transition-all flex items-center justify-center gap-2">
+              {loading ? <><Loader2 className="animate-spin h-5 w-5" /> Creating Account...</> : 'Register Business'}
+            </button>
+          </form>
+          
+          <p className="mt-8 text-center text-gray-600">
+            Already have an account? <Link to="/vendor/login" className="text-orange-600 font-bold hover:underline">Log in here</Link>
+          </p>
+        </div>
       </div>
     </div>
   );
 };
 
-export default VendorRegister;
+export default NewVendorRegister;

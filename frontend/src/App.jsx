@@ -2,7 +2,7 @@ import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { LocationProvider } from './context/LocationContext';
-import useActivityTracker from './hooks/useActivityTracker';
+// import useActivityTracker from './hooks/useActivityTracker'; // Uncomment if used
 import 'leaflet/dist/leaflet.css';
 
 // Import pages
@@ -17,6 +17,8 @@ import LandingPage from './pages/customer/landingPage';
 import MapPage from './pages/customer/mapPage';
 import OrderPage from './pages/orderPay/orderPage';
 import PaymentDetails from './pages/orderPay/paymentDetails';
+import PaymentSuccess from './pages/orderPay/PaymentSuccess';
+import PaymentFailed from './pages/orderPay/PaymentFailed';
 
 function App() {
   return (
@@ -24,16 +26,29 @@ function App() {
       <LocationProvider>
         <Routes>
           <Route path="/" element={<Navigate to="/customer" replace />} />
+          
+          {/* Admin Routes */}
           <Route path="/admin/login" element={<AdminLogin />} />
           <Route path="/admin/dashboard" element={<AdminDashboard />} />
+          
+          {/* Vendor Routes */}
           <Route path="/vendor/login" element={<VendorLogin />} />
           <Route path="/vendor/dashboard" element={<VendorDashboard />} />
           <Route path="/vendor/checkin" element={<VendorCheckIn />} />
           <Route path="/vendor/register" element={<VendorRegister />} />
           <Route path="/vendor/orders" element={<ViewOrders />} />
+          
+          {/* Customer Routes */}
           <Route path="/customer" element={<LandingPage />} />
           <Route path="/customer/map" element={<MapPage />} />
+          
+          {/* Order Routes */}
           <Route path="/order/:vendorId" element={<OrderPage />} />
+          <Route path="/payment-success" element={<PaymentSuccess />} />
+          <Route path="/payment-failed" element={<PaymentFailed />} />
+          {/* FIX: Add this redirect so /order doesn't crash */}
+          <Route path="/order" element={<Navigate to="/customer" replace />} />
+          
           <Route path="/payment" element={<PaymentDetails />} />
         </Routes>
       </LocationProvider>
