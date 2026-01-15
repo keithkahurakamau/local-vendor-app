@@ -6,7 +6,7 @@ import {
 } from 'react-icons/fi';
 import { BiStore } from 'react-icons/bi';
 import mapService from '../../services/mapService';
-// FIX: Import Location Context
+// We keep this import, but we will add a backup manual check
 import { useLocation as useLocationContext } from '../../context/LocationContext';
 
 // --- SAFE IMAGE COMPONENT ---
@@ -15,8 +15,8 @@ const VendorImage = ({ src, alt, className }) => {
 
   if (hasError || !src) {
     return (
-      <div className={`${className} bg-gray-100 flex flex-col items-center justify-center text-gray-400`}>
-        <BiStore className="text-2xl mb-1 opacity-30" />
+      <div className={`${className} bg-orange-50 flex flex-col items-center justify-center text-orange-200`}>
+        <BiStore className="text-2xl mb-1 opacity-50" />
       </div>
     );
   }
@@ -35,8 +35,8 @@ export default function PaymentDetails() {
   const navigate = useNavigate();
   const location = useLocation();
   
-  // FIX: Get User GPS Location from Context
-  const { location: userLocation } = useLocationContext();
+  // 1. Try to get location from Context first
+  const { location: contextLocation } = useLocationContext() || {};
 
   const { cart = [], vendor = {}, landmark = '' } = location.state || {};
 
@@ -54,6 +54,27 @@ export default function PaymentDetails() {
 
   const { subtotal, deliveryFee, serviceFee, grandTotal } = calculateFees();
 
+  // --- NEW: Helper to force-get GPS if Context failed ---
+  const getManualLocation = () => {
+    return new Promise((resolve, reject) => {
+      if (!navigator.geolocation) {
+        reject(new Error("Geolocation not supported"));
+      } else {
+        navigator.geolocation.getCurrentPosition(
+          (position) => {
+            resolve({
+              lat: position.coords.latitude,
+              lng: position.coords.longitude
+            });
+          },
+          (error) => {
+            reject(error);
+          }
+        );
+      }
+    });
+  };
+
   const handlePayment = async () => {
     if (!phoneNumber.trim() || phoneNumber.length < 9) {
       alert("Please enter a valid M-Pesa phone number (e.g., 7XXXXXXXX)");
@@ -67,15 +88,35 @@ export default function PaymentDetails() {
     setLoading(true);
 
     try {
-      // FIX: Pass GPS coordinates
+      // --- CRITICAL FIX: Resolve Location Logic ---
+      let finalLat = contextLocation?.lat;
+      let finalLng = contextLocation?.lng;
+
+      // If Context location is missing, FORCE a manual check
+      if (!finalLat || !finalLng) {
+        console.log("Context location missing. Requesting manual GPS...");
+        try {
+            const manualLoc = await getManualLocation();
+            finalLat = manualLoc.lat;
+            finalLng = manualLoc.lng;
+            console.log("Manual GPS acquired:", finalLat, finalLng);
+        } catch (gpsError) {
+            console.warn("Could not get GPS:", gpsError);
+            // Optional: You can alert the user or proceed with null (Map won't work)
+            alert("We could not get your GPS location. The delivery map might not work accurately.");
+        }
+      }
+
+      console.log("SENDING PAYMENT WITH:", { finalLat, finalLng });
+
       const response = await mapService.initiatePayment(
         vendor.id,
         grandTotal,
         `+254${phoneNumber}`,
         cart,
         deliveryLocation,
-        userLocation?.lat, // Latitude
-        userLocation?.lng  // Longitude
+        finalLat, // Correct Latitude
+        finalLng  // Correct Longitude
       );
 
       navigate('/payment-success', {
@@ -102,14 +143,14 @@ export default function PaymentDetails() {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-50 font-sans text-gray-800">
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-orange-50 font-sans text-gray-800">
       
       {/* --- NAVBAR --- */}
-      <nav className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-gray-100 px-4 py-3">
+      <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-orange-100 px-4 py-3">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <button 
             onClick={() => navigate(-1)} 
-            className="p-2.5 bg-white border border-gray-200 rounded-full hover:bg-gray-50 hover:border-orange-200 transition-colors text-gray-700"
+            className="p-2.5 bg-white border border-orange-100 rounded-full hover:bg-orange-50 hover:border-orange-200 transition-colors text-gray-700"
           >
             <FiArrowLeft className="text-lg" />
           </button>
@@ -133,10 +174,10 @@ export default function PaymentDetails() {
         <div className="lg:col-span-2 space-y-6">
           
           {/* Vendor Card */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-            <div className="p-6 border-b border-gray-100">
+          <div className="bg-white rounded-2xl border border-orange-100 shadow-sm overflow-hidden">
+            <div className="p-6 border-b border-orange-100">
               <div className="flex items-center gap-4">
-                <div className="w-16 h-16 rounded-xl overflow-hidden bg-gradient-to-br from-orange-100 to-orange-200 flex-shrink-0">
+                <div className="w-16 h-16 rounded-xl overflow-hidden bg-orange-100 flex-shrink-0 border border-orange-50">
                   <VendorImage src={vendor.image} alt={vendor.name} className="w-full h-full object-cover" />
                 </div>
                 <div className="flex-1">
@@ -163,7 +204,7 @@ export default function PaymentDetails() {
             {/* Order Items */}
             <div className="p-6">
               <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <FiShoppingCart /> Order Items ({cart.length})
+                <FiShoppingCart className="text-orange-600"/> Order Items ({cart.length})
               </h3>
               
               {cart.length === 0 ? (
@@ -177,9 +218,9 @@ export default function PaymentDetails() {
               ) : (
                 <div className="space-y-3">
                   {cart.map((item, index) => (
-                    <div key={item.id || index} className="flex items-center justify-between p-3 bg-gray-50 rounded-xl hover:bg-gray-100 transition-colors">
+                    <div key={item.id || index} className="flex items-center justify-between p-3 bg-white border border-orange-50 rounded-xl hover:border-orange-200 transition-colors shadow-sm">
                       <div className="flex items-center gap-3">
-                        <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0">
+                        <div className="w-12 h-12 rounded-lg overflow-hidden flex-shrink-0 bg-orange-50">
                             <VendorImage src={item.image} alt={item.name} className="w-full h-full object-cover" />
                         </div>
                         <div>
@@ -196,12 +237,12 @@ export default function PaymentDetails() {
           </div>
 
           {/* EDITABLE DELIVERY LOCATION */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div className="bg-white rounded-2xl border border-orange-100 shadow-sm p-6">
             <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-              <FiMapPin /> Delivery Location
+              <FiMapPin className="text-orange-600"/> Delivery Location
             </h3>
             
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+            <div className="bg-orange-50 border border-orange-100 rounded-xl p-4">
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
                     Address / Landmark
                 </label>
@@ -210,18 +251,18 @@ export default function PaymentDetails() {
                     value={deliveryLocation}
                     onChange={(e) => setDeliveryLocation(e.target.value)}
                     placeholder="Enter delivery details (e.g. Building, Floor)"
-                    className="w-full bg-white border border-gray-300 text-gray-900 text-sm rounded-lg focus:ring-orange-500 focus:border-orange-500 block p-2.5"
+                    className="w-full bg-white border border-orange-200 text-gray-900 text-sm rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none block p-2.5 transition-all"
                 />
                 <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
-                    <FiShield size={12} /> Riders will use this to find you.
+                    <FiShield size={12} className="text-orange-400" /> Riders will use this to find you.
                 </p>
             </div>
           </div>
 
           {/* Payment Security */}
-          <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6">
+          <div className="bg-white rounded-2xl border border-orange-100 shadow-sm p-6">
             <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-full bg-blue-100 flex items-center justify-center flex-shrink-0">
+              <div className="w-10 h-10 rounded-full bg-blue-50 flex items-center justify-center flex-shrink-0 border border-blue-100">
                 <FiShield className="text-blue-600 text-xl" />
               </div>
               <div>
@@ -238,8 +279,8 @@ export default function PaymentDetails() {
 
         {/* --- RIGHT COLUMN: Payment --- */}
         <div className="lg:col-span-1">
-          <div className="sticky top-28 bg-white rounded-2xl border border-gray-100 shadow-xl overflow-hidden">
-            <div className="p-6 border-b border-gray-100">
+          <div className="sticky top-28 bg-white rounded-2xl border border-orange-100 shadow-xl shadow-orange-100/20 overflow-hidden">
+            <div className="p-6 border-b border-orange-100 bg-orange-50/30">
               <h2 className="text-2xl font-bold text-gray-900 mb-1">Complete Payment</h2>
               <p className="text-gray-500 text-sm">Review bill and pay securely</p>
             </div>
@@ -259,7 +300,7 @@ export default function PaymentDetails() {
                   <span>Service Fee</span>
                   <span>KES {serviceFee}</span>
                 </div>
-                <div className="flex justify-between text-lg font-bold text-gray-900 pt-3 border-t border-gray-200">
+                <div className="flex justify-between text-lg font-bold text-gray-900 pt-3 border-t border-orange-100">
                   <span>Total Amount</span>
                   <span>KES {grandTotal}</span>
                 </div>
@@ -268,7 +309,7 @@ export default function PaymentDetails() {
               {/* M-Pesa Input Section */}
               <div className="bg-orange-50 rounded-xl p-5 border border-orange-100">
                 <div className="flex items-center gap-3 mb-4">
-                  <div className="bg-green-600 p-2 rounded-lg">
+                  <div className="bg-green-600 p-2 rounded-lg shadow-sm">
                      <FiSmartphone className="text-white text-lg" />
                   </div>
                   <div>
@@ -291,7 +332,7 @@ export default function PaymentDetails() {
                         const value = e.target.value.replace(/\D/g, '').slice(0, 9);
                         setPhoneNumber(value);
                       }}
-                      className="w-full pl-14 pr-4 py-3 bg-white border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all font-medium text-lg tracking-wide"
+                      className="w-full pl-14 pr-4 py-3 bg-white border border-orange-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 transition-all font-medium text-lg tracking-wide shadow-sm"
                     />
                   </div>
                 </div>
@@ -302,10 +343,10 @@ export default function PaymentDetails() {
                 <button
                   onClick={handlePayment}
                   disabled={loading || cart.length === 0}
-                  className={`w-full py-4 rounded-xl font-bold text-lg transition-all flex items-center justify-center gap-3 ${
+                  className={`w-full py-4 rounded-xl font-bold text-lg transition-all flex items-center justify-center gap-3 shadow-lg ${
                     loading || cart.length === 0
                       ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                      : "bg-green-600 text-white hover:bg-green-700 shadow-lg hover:shadow-green-200 transform hover:-translate-y-0.5"
+                      : "bg-gray-900 text-white hover:bg-orange-600 shadow-orange-200 transform hover:-translate-y-0.5"
                   }`}
                 >
                   {loading ? (
@@ -322,7 +363,7 @@ export default function PaymentDetails() {
 
                 <button
                   onClick={() => navigate(-1)}
-                  className="w-full py-4 rounded-xl font-bold border-2 border-red-100 bg-red-50 text-red-600 hover:bg-red-100 hover:border-red-200 transition-colors flex items-center justify-center gap-2"
+                  className="w-full py-4 rounded-xl font-bold border-2 border-red-50 bg-white text-red-500 hover:bg-red-50 hover:border-red-100 transition-colors flex items-center justify-center gap-2"
                 >
                   <FiX className="text-xl" /> Cancel Order
                 </button>
@@ -330,7 +371,7 @@ export default function PaymentDetails() {
 
             </div>
 
-            <div className="bg-gray-50 border-t border-gray-100 p-4 text-center">
+            <div className="bg-orange-50/50 border-t border-orange-100 p-4 text-center">
               <div className="flex items-center justify-center gap-2 text-sm text-gray-500">
                 <FiShield className="text-green-600" />
                 <span>Secured by M-Pesa & HyperLocal</span>

@@ -14,7 +14,7 @@ class Config:
     # --- FIX: Keep vendors logged in for 1 hour ---
     JWT_ACCESS_TOKEN_EXPIRES = timedelta(hours=1)
     
-    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL', 'sqlite:///app.db')
+    SQLALCHEMY_DATABASE_URI = os.getenv('DATABASE_URL', '')
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     SQLALCHEMY_ECHO = False
     

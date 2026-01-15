@@ -14,8 +14,8 @@ const VendorImage = ({ src, alt, className }) => {
 
     if (hasError || !src) {
         return (
-            <div className={`${className} bg-gray-100 flex flex-col items-center justify-center text-gray-400`}>
-                <BiStore className="text-2xl mb-1 opacity-30" />
+            <div className={`${className} bg-orange-50 flex flex-col items-center justify-center text-orange-200`}>
+                <BiStore className="text-2xl mb-1 opacity-50" />
             </div>
         );
     }
@@ -58,15 +58,11 @@ const OrderPage = () => {
       setLoading(true);
       setError(null);
 
-      // Note: We prioritize fetching fresh data to ensure we have the Address and correct Menu structure.
-      // The state passed from LandingPage might lack 'address' or use 'menu' instead of 'menuItems'.
       try {
         const fetchedVendor = await mapService.getVendorDetails(vendorId);
         
-        // FIX: mapService returns the vendor object directly (or null), NOT { success: true, ... }
         if (fetchedVendor) {
           setVendor(fetchedVendor);
-          // Backend returns 'menuItems' in the details endpoint
           setMenuItems(fetchedVendor.menuItems || []); 
         } else {
           setError("Failed to load vendor details.");
@@ -128,13 +124,13 @@ const OrderPage = () => {
   const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
 
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-orange-50">
       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-orange-600"></div>
     </div>
   );
 
   if (error || !vendor) return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-4 text-center">
+    <div className="min-h-screen flex flex-col items-center justify-center bg-orange-50 p-4 text-center">
       <div className="bg-red-50 p-4 rounded-full mb-4"><FiAlertCircle className="text-3xl text-red-500"/></div>
       <h2 className="text-xl font-bold text-gray-900 mb-2">Vendor Unavailable</h2>
       <p className="text-gray-500 mb-6">{error || "We couldn't find this vendor."}</p>
@@ -143,11 +139,13 @@ const OrderPage = () => {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50 pb-24 lg:pb-0">
+    // CHANGE 1: Main background changed from gray-50 to a soft orange gradient
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-orange-50 pb-24 lg:pb-0">
       
       {/* Navbar */}
-      <nav className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-gray-100 px-4 py-3 flex items-center gap-4 shadow-sm">
-        <button onClick={() => navigate(-1)} className="p-2 hover:bg-gray-100 rounded-full transition-colors">
+      {/* CHANGE 2: Added border-orange-100 to blend navbar */}
+      <nav className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-orange-100 px-4 py-3 flex items-center gap-4 shadow-sm">
+        <button onClick={() => navigate(-1)} className="p-2 hover:bg-orange-50 rounded-full transition-colors">
           <FiArrowLeft className="text-xl text-gray-700" />
         </button>
         <div className="flex-1 min-w-0">
@@ -157,7 +155,7 @@ const OrderPage = () => {
                 {vendor.status || 'Open'}
             </span>
             <span className="text-gray-500 truncate max-w-[150px] flex items-center gap-1">
-                <FiMapPin size={10} /> {vendor.address || 'Local Vendor'}
+                <FiMapPin size={10} className="text-orange-500" /> {vendor.address || 'Local Vendor'}
             </span>
           </div>
         </div>
@@ -168,28 +166,30 @@ const OrderPage = () => {
         {/* LEFT COLUMN: VENDOR INFO & MENU */}
         <div className="lg:col-span-2 space-y-6">
           
-          <div className="relative h-48 md:h-64 rounded-2xl overflow-hidden bg-gray-200 shadow-md">
+          <div className="relative h-48 md:h-64 rounded-2xl overflow-hidden bg-orange-100 shadow-md">
             <VendorImage src={vendor.image} alt={vendor.name} className="w-full h-full object-cover" />
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
             <div className="absolute bottom-4 left-4 right-4 text-white">
               <h2 className="text-3xl font-bold mb-1 shadow-black drop-shadow-md">{vendor.name}</h2>
               <div className="flex items-center gap-4 text-sm font-medium text-white/90">
-                 <span className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-full border border-white/10">
+                 <span className="bg-orange-600/90 backdrop-blur-md px-3 py-1 rounded-full border border-orange-400/50">
                     {vendor.status === 'Open' ? 'Accepting Orders' : 'Local Favorite'}
                  </span>
               </div>
             </div>
           </div>
 
-          <div className="sticky top-[72px] z-30 bg-gray-50 py-2">
+          {/* CHANGE 3: Sticky Search bar background matches main background */}
+          <div className="sticky top-[72px] z-30 bg-orange-50/95 backdrop-blur-sm py-2 -mx-2 px-2 rounded-lg">
             <div className="relative">
-              <FiSearch className="absolute left-3 top-3.5 text-gray-400" />
+              <FiSearch className="absolute left-3 top-3.5 text-orange-300" />
               <input 
                 type="text" 
                 placeholder={`Search menu...`}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full bg-white border border-gray-200 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-sm transition-all"
+                // CHANGE 4: Input border matches theme
+                className="w-full bg-white border border-orange-200 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-sm transition-all placeholder-gray-400"
               />
             </div>
           </div>
@@ -200,9 +200,10 @@ const OrderPage = () => {
             </h3>
             
             {filteredItems.length === 0 ? (
-              <div className="text-center py-16 bg-white rounded-xl border border-dashed border-gray-200">
-                <div className="bg-gray-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3">
-                    <FiSearch className="text-2xl text-gray-400" />
+              // CHANGE 5: Empty state styling
+              <div className="text-center py-16 bg-white rounded-xl border border-dashed border-orange-200">
+                <div className="bg-orange-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <FiSearch className="text-2xl text-orange-300" />
                 </div>
                 <p className="text-gray-900 font-medium">No items found</p>
                 <p className="text-gray-500 text-sm">Try searching for something else</p>
@@ -215,8 +216,9 @@ const OrderPage = () => {
                   const inCart = cart.find(c => (c.id || c.name) === itemId);
 
                   return (
-                    <div key={itemId} className="bg-white p-3 rounded-xl border border-gray-100 shadow-sm flex gap-3 hover:border-orange-200 transition-colors group">
-                      <div className="w-20 h-20 bg-gray-100 rounded-lg flex-shrink-0 overflow-hidden relative">
+                    // CHANGE 6: Card styling (Orange border, orange hover shadow)
+                    <div key={itemId} className="bg-white p-3 rounded-xl border border-orange-100 shadow-sm flex gap-3 hover:border-orange-300 hover:shadow-orange-100/50 transition-all group">
+                      <div className="w-20 h-20 bg-orange-50 rounded-lg flex-shrink-0 overflow-hidden relative">
                         <VendorImage src={itemObj.image} alt={itemObj.name} className="w-full h-full object-cover" />
                       </div>
                       
@@ -232,7 +234,7 @@ const OrderPage = () => {
                           </span>
                           
                           {inCart ? (
-                            <div className="flex items-center gap-3 bg-gray-900 text-white rounded-lg px-2 py-1 shadow-md">
+                            <div className="flex items-center gap-3 bg-gray-900 text-white rounded-lg px-2 py-1 shadow-md shadow-orange-100">
                               <button onClick={() => handleCart('remove', itemObj)} className="hover:text-orange-300 transition-colors"><FiMinus size={12}/></button>
                               <span className="text-xs font-bold w-3 text-center">{inCart.qty}</span>
                               <button onClick={() => handleCart('add', itemObj)} className="hover:text-orange-300 transition-colors"><FiPlus size={12}/></button>
@@ -240,7 +242,7 @@ const OrderPage = () => {
                           ) : (
                             <button 
                               onClick={() => handleCart('add', itemObj)}
-                              className="bg-gray-100 text-gray-900 p-2 rounded-lg hover:bg-orange-100 hover:text-orange-700 transition-colors group-hover:bg-gray-200"
+                              className="bg-orange-50 text-orange-600 p-2 rounded-lg hover:bg-orange-500 hover:text-white transition-all duration-300 group-hover:shadow-md"
                             >
                               <FiPlus size={16} />
                             </button>
@@ -257,19 +259,20 @@ const OrderPage = () => {
 
         {/* RIGHT COLUMN: CART (Desktop) */}
         <div className="hidden lg:block lg:col-span-1">
-          <div className={`sticky top-24 bg-white rounded-2xl border border-gray-100 shadow-xl overflow-hidden flex flex-col transition-all duration-300 ${
+          {/* CHANGE 7: Cart container styling */}
+          <div className={`sticky top-24 bg-white rounded-2xl border border-orange-100 shadow-xl shadow-orange-100/20 overflow-hidden flex flex-col transition-all duration-300 ${
             cartCollapsed ? 'h-16' : 'min-h-[400px] max-h-[85vh]'
           }`}>
-            <div className="p-5 border-b border-gray-100 bg-gray-50/80 backdrop-blur flex items-center justify-between cursor-pointer" onClick={() => setCartCollapsed(!cartCollapsed)}>
+            <div className="p-5 border-b border-orange-100 bg-orange-50/50 backdrop-blur flex items-center justify-between cursor-pointer" onClick={() => setCartCollapsed(!cartCollapsed)}>
               <h2 className="font-bold text-gray-900 text-lg flex items-center gap-2">
-                <FiShoppingCart /> Your Order
+                <FiShoppingCart className="text-orange-600"/> Your Order
                 {cart.length > 0 && (
                   <span className="bg-orange-600 text-white text-xs px-2 py-1 rounded-full font-bold animate-pulse">
                     {cart.reduce((a, b) => a + b.qty, 0)}
                   </span>
                 )}
               </h2>
-              <FiChevronDown className={`text-gray-500 transition-transform duration-300 ${cartCollapsed ? 'rotate-180' : ''}`} />
+              <FiChevronDown className={`text-orange-400 transition-transform duration-300 ${cartCollapsed ? 'rotate-180' : ''}`} />
             </div>
 
             {!cartCollapsed && (
@@ -277,12 +280,13 @@ const OrderPage = () => {
                 <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
                   {cart.length === 0 ? (
                     <div className="text-center py-12 text-gray-400">
-                      <FiShoppingCart className="text-3xl mx-auto mb-3 opacity-50" />
+                      <FiShoppingCart className="text-3xl mx-auto mb-3 opacity-30 text-orange-300" />
                       <p className="font-medium text-sm">Cart is empty</p>
                     </div>
                   ) : (
                     cart.map(item => (
-                      <div key={item.id || item.name} className="flex justify-between items-center text-sm p-3 rounded-xl border bg-white border-gray-100">
+                      // CHANGE 8: Cart item border
+                      <div key={item.id || item.name} className="flex justify-between items-center text-sm p-3 rounded-xl border bg-white border-orange-50">
                         <div className="flex items-center gap-3">
                           <div className="bg-orange-50 text-orange-700 w-6 h-6 rounded flex items-center justify-center font-bold text-xs border border-orange-100">
                             {item.qty}
@@ -301,7 +305,7 @@ const OrderPage = () => {
                 </div>
 
                 {cart.length > 0 && (
-                  <div className="p-5 bg-gray-50 border-t border-gray-100 space-y-4">
+                  <div className="p-5 bg-orange-50/30 border-t border-orange-100 space-y-4">
                     <div className="space-y-3">
                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Delivery Location</label>
                         <input
@@ -309,7 +313,7 @@ const OrderPage = () => {
                             placeholder="Type location (e.g., Gate B, Floor 2)"
                             value={deliveryLocation}
                             onChange={(e) => setDeliveryLocation(e.target.value)}
-                            className="w-full bg-white border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all"
+                            className="w-full bg-white border border-orange-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all"
                         />
                     </div>
 
@@ -320,7 +324,7 @@ const OrderPage = () => {
 
                     <button
                       onClick={() => navigate('/payment', { state: { cart, vendor, landmark: deliveryLocation } })}
-                      className="w-full py-3.5 rounded-xl font-bold text-white bg-gray-900 hover:bg-orange-600 shadow-lg transition-all"
+                      className="w-full py-3.5 rounded-xl font-bold text-white bg-gray-900 hover:bg-orange-600 shadow-lg shadow-orange-200 transition-all"
                     >
                       Proceed to Checkout
                     </button>
@@ -334,10 +338,10 @@ const OrderPage = () => {
 
       {/* MOBILE BOTTOM BAR */}
       {cart.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 lg:hidden p-4 bg-white border-t border-gray-200 shadow-lg z-50">
+        <div className="fixed bottom-0 left-0 right-0 lg:hidden p-4 bg-white border-t border-orange-100 shadow-2xl z-50">
           <button
             onClick={() => setShowOrderModal(true)}
-            className="w-full py-3.5 px-6 rounded-xl font-bold flex items-center justify-between shadow-xl bg-gray-900 text-white hover:bg-gray-800 transition-colors"
+            className="w-full py-3.5 px-6 rounded-xl font-bold flex items-center justify-between shadow-xl bg-gray-900 text-white hover:bg-orange-600 transition-colors"
           >
             <div className="flex items-center gap-3">
               <span className="bg-orange-500 text-white px-2 py-0.5 rounded text-sm font-bold">
@@ -356,16 +360,16 @@ const OrderPage = () => {
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity" onClick={() => setShowOrderModal(false)} />
           <div className="relative w-full max-w-md bg-white rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col animate-slide-up">
             
-            <div className="p-5 border-b border-gray-100 flex items-center justify-between bg-gray-50 rounded-t-3xl">
+            <div className="p-5 border-b border-orange-100 flex items-center justify-between bg-orange-50/50 rounded-t-3xl">
               <h2 className="font-bold text-gray-900 text-lg">Your Order</h2>
-              <button onClick={() => setShowOrderModal(false)} className="p-2 bg-white rounded-full shadow-sm hover:bg-gray-100 text-gray-500">
+              <button onClick={() => setShowOrderModal(false)} className="p-2 bg-white rounded-full shadow-sm hover:bg-orange-50 text-gray-500">
                 <FiX size={20} />
               </button>
             </div>
 
             <div className="flex-1 overflow-y-auto p-5 space-y-3 custom-scrollbar">
                {cart.map(item => (
-                  <div key={item.id || item.name} className="flex justify-between items-center text-sm p-3 bg-white border border-gray-100 rounded-xl shadow-sm">
+                  <div key={item.id || item.name} className="flex justify-between items-center text-sm p-3 bg-white border border-orange-100 rounded-xl shadow-sm">
                     <div className="flex items-center gap-3">
                         <div className="bg-orange-50 text-orange-700 w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm">
                             {item.qty}
@@ -381,19 +385,19 @@ const OrderPage = () => {
                   </div>
                 ))}
                 
-                <div className="mt-6 pt-6 border-t border-gray-100">
+                <div className="mt-6 pt-6 border-t border-orange-100">
                     <label className="text-xs font-bold text-gray-500 uppercase tracking-wider mb-2 block">Delivery Location</label>
                     <input
                         type="text"
                         placeholder="Type location (e.g., Gate B, House 10)"
                         value={deliveryLocation}
                         onChange={(e) => setDeliveryLocation(e.target.value)}
-                        className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        className="w-full bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500"
                     />
                 </div>
             </div>
 
-            <div className="p-6 border-t border-gray-100 bg-gray-50">
+            <div className="p-6 border-t border-orange-100 bg-orange-50/30">
               <div className="flex justify-between items-center mb-4">
                 <span className="text-gray-500">Total to pay</span>
                 <span className="text-2xl font-bold text-gray-900">KES {cartTotal.toLocaleString()}</span>

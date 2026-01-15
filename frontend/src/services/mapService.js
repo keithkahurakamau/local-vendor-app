@@ -1,7 +1,7 @@
 import api from './api';
 
 const mapService = {
-  // Fetch nearby vendors based on coordinates
+  // 1. Fetch nearby vendors
   getNearbyVendors: async (lat, lng, radius = 5000) => {
     try {
       const response = await api.get('/customer/nearby', {
@@ -14,7 +14,7 @@ const mapService = {
     }
   },
 
-  // Search for specific items
+  // 2. Search for items
   searchVendors: async (item, lat, lng) => {
     try {
       const response = await api.get('/customer/search', {
@@ -27,7 +27,7 @@ const mapService = {
     }
   },
 
-  // Get details for a specific vendor
+  // 3. Get vendor details
   getVendorDetails: async (vendorId) => {
     try {
       const response = await api.get(`/customer/vendor/${vendorId}`);
@@ -41,16 +41,17 @@ const mapService = {
     }
   },
 
-  // --- UPDATED PAYMENT FUNCTION (Accepts Lat/Lng) ---
+  // 4. Initiate Payment
   initiatePayment: async (vendorId, amount, phoneNumber, items, deliveryLocation, lat, lng) => {
     try {
+      console.log("🚀 mapService sending GPS:", { lat, lng });
+
       const payload = {
         vendorId: vendorId,             
         amount: amount,                 
         phone: phoneNumber,             
         items: items,                   
         deliveryLocation: deliveryLocation,
-        // Send Geolocation
         customerLat: lat,
         customerLon: lng
       };
@@ -60,6 +61,17 @@ const mapService = {
     } catch (error) {
       console.error("Payment initiation error:", error);
       throw new Error(error.response?.data?.error || "Payment failed");
+    }
+  },
+
+  // 5. Check Payment Status (Polling)
+  checkPaymentStatus: async (checkoutId) => {
+    try {
+      const response = await api.get(`/customer/payment-status/${checkoutId}`);
+      return response.data; // Returns { status: 'PENDING' | 'SUCCESSFUL' | 'FAILED' }
+    } catch (error) {
+      console.error("Status check error:", error);
+      return { status: 'PENDING' }; // Default to pending on error to keep polling
     }
   }
 };
