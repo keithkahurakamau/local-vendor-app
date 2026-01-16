@@ -674,7 +674,7 @@ const LandingPage = () => {
                                 </span>
                             </div>
                             <p className="text-gray-400 leading-relaxed max-w-sm">
-                                Empowering local businesses by connecting neighborhoods with their favorite flavors. Fast, fresh, and friendly delivery.
+                                Empowering local vendors by connecting neighborhoods with their favorite flavors. Fast, fresh, and friendly delivery.
                             </p>
                         </div>
                         <div className="md:pl-10">
@@ -695,15 +695,15 @@ const LandingPage = () => {
                         </div>
                         <div className="bg-gray-800 rounded-2xl p-8 border border-gray-700 shadow-xl relative overflow-hidden group hover:border-orange-500/30 transition-colors">
                             <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/10 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-orange-500/20"></div>
-                            <h3 className="text-xl font-bold text-white mb-3 relative z-10">Are you a Vendor?</h3>
+                            <h3 className="text-xl font-bold text-white mb-3 relative z-10">Want to be a Vendor?</h3>
                             <p className="text-gray-400 text-sm mb-6 relative z-10 leading-relaxed">
-                                Join our growing marketplace. Expand your reach and serve more customers in your neighborhood today.
+                                Join our growing marketplace. Reach more customers and boost your sales by registering your vendor with us today!
                             </p>
                             <button 
                                 onClick={() => navigate('/vendor/register')}
                                 className="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-3.5 px-6 rounded-xl transition-all hover:shadow-lg hover:shadow-orange-900/20 flex items-center justify-center gap-2 relative z-10 active:scale-95"
                             >
-                                Register Your Business <BiStore className="text-lg" />
+                                Register Your Vendor <BiStore className="text-lg" />
                             </button>
                         </div>
                     </div>
