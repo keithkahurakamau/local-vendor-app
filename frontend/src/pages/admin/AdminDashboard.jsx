@@ -2,28 +2,33 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
-import { Store, DollarSign, Users, TrendingUp, LogOut, MapPin, Clock, Phone, FileText, ShoppingBag } from 'lucide-react';
+import { Store, DollarSign, Users, LogOut, MapPin, Clock, Phone, FileText, Activity, Search, Hash } from 'lucide-react';
 import api from '../../services/api';
 import 'leaflet/dist/leaflet.css';
 
-// Fix for Leaflet default marker icons
-import icon from 'leaflet/dist/images/marker-icon.png';
-import iconShadow from 'leaflet/dist/images/marker-shadow.png';
-
-let DefaultIcon = L.icon({
-    iconUrl: icon,
-    shadowUrl: iconShadow,
-    iconSize: [25, 41],
-    iconAnchor: [12, 41]
+// --- CUSTOM ORANGE MARKER SETUP ---
+const orangeIcon = new L.Icon({
+  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png',
+  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconSize: [25, 41],
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
 });
-L.Marker.prototype.options.icon = DefaultIcon;
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('map');
+  
+  // Data State
   const [vendors, setVendors] = useState([]);
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
+  
+  // Search States
+  const [logSearch, setLogSearch] = useState('');
+  const [vendorSearch, setVendorSearch] = useState('');
+
   const [stats, setStats] = useState({
     totalVendors: 0,
     activeVendors: 0,
@@ -33,13 +38,11 @@ const AdminDashboard = () => {
 
   useEffect(() => {
     fetchDashboardData();
-    // Auto-refresh every 15s (Faster updates)
     const interval = setInterval(fetchDashboardData, 15000);
     return () => clearInterval(interval);
   }, []);
 
   const fetchDashboardData = async () => {
-    // 1. Check for token (Check both keys to be safe)
     const token = localStorage.getItem('token') || localStorage.getItem('admin_token');
     
     if (!token) {
@@ -50,7 +53,6 @@ const AdminDashboard = () => {
     const config = { headers: { Authorization: `Bearer ${token}` } };
 
     try {
-      // Only set loading on initial load, not background refreshes
       if (vendors.length === 0) setLoading(true);
       
       const [vendorsResponse, logsResponse] = await Promise.all([
@@ -64,7 +66,6 @@ const AdminDashboard = () => {
       setVendors(vendorsData);
       setLogs(logsData);
 
-      // Calculate stats based on "Successful" status
       const totalTransactions = logsData.length;
       const totalRevenue = logsData
         .filter(log => log.status === 'Successful') 
@@ -100,32 +101,60 @@ const AdminDashboard = () => {
     }).format(amount);
   };
 
+  // --- FILTER LOGIC ---
+  
+  // 1. Filter Logs
+  const filteredLogs = logs.filter(log => {
+    if (!logSearch) return true;
+    const query = logSearch.toLowerCase();
+    return (
+      log.order_id?.toLowerCase().includes(query) ||
+      log.vendor_name?.toLowerCase().includes(query) ||
+      log.receipt?.toLowerCase().includes(query) ||
+      log.status?.toLowerCase().includes(query) ||
+      log.amount?.toString().includes(query)
+    );
+  });
+
+  // 2. Filter Map Vendors
+  const filteredVendors = vendors.filter(vendor => {
+    if (!vendorSearch) return true;
+    const query = vendorSearch.toLowerCase();
+    return (
+      vendor.name?.toLowerCase().includes(query) ||
+      vendor.vendor_id?.toString().includes(query) ||
+      vendor.id?.toString().includes(query) ||
+      vendor.phone_number?.includes(query)
+    );
+  });
+
   if (loading && vendors.length === 0) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="min-h-screen bg-orange-50 flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600"></div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-orange-50">
+      
       {/* Header */}
-      <nav className="bg-white shadow sticky top-0 z-50">
+      <nav className="bg-white/90 backdrop-blur-md shadow-sm border-b border-orange-100 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
             <div className="flex items-center">
               <div className="flex items-center gap-2">
-                <div className="bg-orange-600 p-2 rounded-lg">
+                <div className="bg-orange-600 p-2 rounded-lg shadow-sm">
                   <Store className="text-white text-lg" />
                 </div>
-                <h1 className="text-xl font-bold text-gray-900">Admin Dashboard</h1>
+                <h1 className="text-xl font-bold text-gray-900 tracking-tight">Admin Dashboard</h1>
               </div>
             </div>
             <div className="flex items-center">
               <button
                 onClick={handleLogout}
-                className="flex items-center gap-2 bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-md text-sm font-medium transition-colors"
+                className="flex items-center gap-2 bg-white border border-red-100 text-red-600 hover:bg-red-50 hover:border-red-200 px-4 py-2 rounded-xl text-sm font-bold transition-all shadow-sm"
               >
                 <LogOut className="h-4 w-4" />
                 Logout
@@ -135,56 +164,51 @@ const AdminDashboard = () => {
         </div>
       </nav>
 
-      <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto py-8 px-4 sm:px-6 lg:px-8">
+        
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="p-2 bg-blue-100 rounded-lg">
-                <Users className="h-6 w-6 text-blue-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Active Vendors</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.activeVendors}</p>
-              </div>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
+          <div className="bg-white rounded-2xl shadow-lg shadow-orange-100/50 border border-orange-100 p-6 flex items-center">
+            <div className="p-4 bg-teal-50 rounded-2xl border border-teal-100 shadow-sm">
+              <Users className="h-8 w-8 text-teal-600" />
+            </div>
+            <div className="ml-5">
+              <p className="text-sm font-bold text-gray-400 uppercase tracking-wider">Active Vendors</p>
+              <p className="text-3xl font-extrabold text-gray-900 mt-1">{stats.activeVendors}</p>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="p-2 bg-purple-100 rounded-lg">
-                <TrendingUp className="h-6 w-6 text-purple-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Total Transactions</p>
-                <p className="text-2xl font-bold text-gray-900">{stats.totalTransactions}</p>
-              </div>
+          <div className="bg-white rounded-2xl shadow-lg shadow-orange-100/50 border border-orange-100 p-6 flex items-center">
+            <div className="p-4 bg-purple-50 rounded-2xl border border-purple-100 shadow-sm">
+              <Activity className="h-8 w-8 text-purple-600" />
+            </div>
+            <div className="ml-5">
+              <p className="text-sm font-bold text-gray-400 uppercase tracking-wider">Transactions</p>
+              <p className="text-3xl font-extrabold text-gray-900 mt-1">{stats.totalTransactions}</p>
             </div>
           </div>
 
-          <div className="bg-white rounded-lg shadow p-6">
-            <div className="flex items-center">
-              <div className="p-2 bg-orange-100 rounded-lg">
-                <DollarSign className="h-6 w-6 text-orange-600" />
-              </div>
-              <div className="ml-4">
-                <p className="text-sm font-medium text-gray-600">Total Revenue</p>
-                <p className="text-2xl font-bold text-gray-900">{formatCurrency(stats.totalRevenue)}</p>
-              </div>
+          <div className="bg-white rounded-2xl shadow-lg shadow-orange-100/50 border border-orange-100 p-6 flex items-center">
+            <div className="p-4 bg-orange-50 rounded-2xl border border-orange-100 shadow-sm">
+              <DollarSign className="h-8 w-8 text-orange-600" />
+            </div>
+            <div className="ml-5">
+              <p className="text-sm font-bold text-gray-400 uppercase tracking-wider">Total Revenue</p>
+              <p className="text-3xl font-extrabold text-gray-900 mt-1">{formatCurrency(stats.totalRevenue)}</p>
             </div>
           </div>
         </div>
 
         {/* Tabs */}
         <div className="mb-6">
-          <div className="border-b border-gray-200">
+          <div className="border-b border-orange-100">
             <nav className="-mb-px flex space-x-8">
               <button
                 onClick={() => setActiveTab('map')}
-                className={`flex items-center py-2 px-1 border-b-2 font-medium text-sm ${
+                className={`flex items-center py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                   activeTab === 'map'
                     ? 'border-orange-500 text-orange-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    : 'border-transparent text-gray-500 hover:text-orange-500 hover:border-orange-200'
                 }`}
               >
                 <MapPin className="w-4 h-4 mr-2" />
@@ -192,10 +216,10 @@ const AdminDashboard = () => {
               </button>
               <button
                 onClick={() => setActiveTab('logs')}
-                className={`flex items-center py-2 px-1 border-b-2 font-medium text-sm ${
+                className={`flex items-center py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
                   activeTab === 'logs'
                     ? 'border-orange-500 text-orange-600'
-                    : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                    : 'border-transparent text-gray-500 hover:text-orange-500 hover:border-orange-200'
                 }`}
               >
                 <FileText className="w-4 h-4 mr-2" />
@@ -207,16 +231,34 @@ const AdminDashboard = () => {
 
         {/* Tab Content: MAP */}
         {activeTab === 'map' && (
-          <div className="bg-white shadow rounded-lg overflow-hidden border border-gray-200">
-            <div className="px-6 py-4 border-b border-gray-200 flex justify-between items-center">
+          <div className="bg-white shadow-xl shadow-orange-100/50 rounded-2xl overflow-hidden border border-orange-100">
+            
+            {/* Map Header with Search */}
+            <div className="px-6 py-4 border-b border-orange-100 flex flex-col sm:flex-row justify-between items-center bg-orange-50/30 gap-4">
               <div>
-                <h3 className="text-lg font-medium text-gray-900">Active Vendor Locations</h3>
+                <h3 className="text-lg font-bold text-gray-900">Active Vendor Locations</h3>
                 <p className="text-sm text-gray-500">Real-time view of vendors currently open for business</p>
               </div>
-              <span className="bg-green-100 text-green-800 text-xs font-bold px-2.5 py-0.5 rounded border border-green-200 animate-pulse">
-                Live Data
-              </span>
+              
+              <div className="flex items-center gap-3 w-full sm:w-auto">
+                <div className="relative w-full sm:w-64">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                        <Search className="h-4 w-4 text-orange-400" />
+                    </div>
+                    <input
+                        type="text"
+                        placeholder="Search vendor, ID, or phone..."
+                        className="block w-full pl-10 pr-3 py-2 border border-orange-200 rounded-lg leading-5 bg-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm transition-colors"
+                        value={vendorSearch}
+                        onChange={(e) => setVendorSearch(e.target.value)}
+                    />
+                </div>
+                <span className="hidden sm:flex bg-green-100 text-green-700 text-xs font-bold px-3 py-1.5 rounded-full border border-green-200 animate-pulse items-center gap-1 whitespace-nowrap">
+                    <span className="w-2 h-2 bg-green-500 rounded-full"></span> Live
+                </span>
+              </div>
             </div>
+
             {/* Map Container */}
             <div className="h-[600px] w-full relative z-0">
               <MapContainer
@@ -228,27 +270,48 @@ const AdminDashboard = () => {
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
-                {vendors.map((vendor) => (
+                
+                {filteredVendors.map((vendor) => (
                   <Marker
                     key={vendor.id}
                     position={[vendor.latitude, vendor.longitude]}
+                    icon={orangeIcon}
                   >
-                    <Popup>
-                      <div className="p-1 min-w-[200px]">
-                        <h4 className="font-bold text-gray-900 text-base">{vendor.name}</h4>
-                        <div className="mt-2 space-y-1">
-                            <p className="text-xs text-gray-600 flex items-center">
-                                <MapPin className="h-3 w-3 mr-1 text-orange-500" /> 
-                                {vendor.address}
-                            </p>
-                            <p className="text-xs text-gray-600 flex items-center">
-                                <Phone className="h-3 w-3 mr-1 text-blue-500" />
-                                {vendor.phone_number}
-                            </p>
-                            <p className="text-xs text-gray-500 mt-2 border-t pt-1">
-                                <Clock className="inline h-3 w-3 mr-1" />
-                                Closes in: <span className="font-bold">{vendor.active_for_mins} mins</span>
-                            </p>
+                    {/* UPDATED POPUP */}
+                    <Popup minWidth={260} maxWidth={260} className="custom-popup">
+                      <div className="p-1 font-sans">
+                        <div className="flex items-start justify-between mb-3 pb-2 border-b border-gray-100">
+                            <div>
+                                <h4 className="font-bold text-gray-900 text-base line-clamp-1">{vendor.name}</h4>
+                                <div className="flex items-center gap-1 text-[10px] text-gray-400 font-mono mt-0.5">
+                                    <Hash size={10} /> ID: {vendor.vendor_id || vendor.id}
+                                </div>
+                            </div>
+                            <span className="bg-green-100 text-green-700 text-[10px] px-2 py-0.5 rounded-full font-bold border border-green-200 mt-1">
+                                OPEN
+                            </span>
+                        </div>
+                        
+                        <div className="space-y-2.5">
+                            <div className="flex items-start gap-2 text-sm text-gray-700">
+                                <MapPin className="h-4 w-4 text-orange-500 mt-0.5 flex-shrink-0" /> 
+                                <span className="leading-tight text-xs font-medium">{vendor.address || "Location unavailable"}</span>
+                            </div>
+                            
+                            <div className="flex items-center gap-2 text-sm text-gray-700">
+                                <Phone className="h-4 w-4 text-teal-600 flex-shrink-0" />
+                                <span className="font-mono text-xs font-medium bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
+                                    {vendor.phone_number}
+                                </span>
+                            </div>
+                            
+                            <div className="flex items-center justify-between text-xs text-gray-500 bg-orange-50/50 p-2 rounded-lg mt-2 border border-orange-100">
+                                <div className="flex items-center gap-1.5">
+                                    <Clock className="h-3.5 w-3.5 text-orange-400" />
+                                    <span>Active Time:</span>
+                                </div>
+                                <span className="font-bold text-orange-700">{vendor.active_for_mins} mins</span>
+                            </div>
                         </div>
                       </div>
                     </Popup>
@@ -261,66 +324,64 @@ const AdminDashboard = () => {
 
         {/* Tab Content: LOGS */}
         {activeTab === 'logs' && (
-          <div className="bg-white shadow rounded-lg overflow-hidden">
-            <div className="px-6 py-4 border-b border-gray-200">
-              <h3 className="text-lg font-medium text-gray-900">Transaction Logs</h3>
-              <p className="text-sm text-gray-500">History of all payment attempts</p>
+          <div className="bg-white shadow-xl shadow-orange-100/50 rounded-2xl overflow-hidden border border-orange-100">
+            
+            {/* Logs Header with Search */}
+            <div className="px-6 py-4 border-b border-orange-100 bg-orange-50/30 flex flex-col sm:flex-row justify-between items-center gap-4">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900">Transaction Logs</h3>
+                <p className="text-sm text-gray-500">History of all payment attempts</p>
+              </div>
+              
+              <div className="relative w-full sm:w-64">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Search className="h-4 w-4 text-orange-400" />
+                </div>
+                <input
+                  type="text"
+                  placeholder="Search logs..."
+                  className="block w-full pl-10 pr-3 py-2 border border-orange-200 rounded-lg leading-5 bg-white placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-orange-500 focus:border-orange-500 sm:text-sm transition-colors"
+                  value={logSearch}
+                  onChange={(e) => setLogSearch(e.target.value)}
+                />
+              </div>
             </div>
+
             <div className="overflow-x-auto">
-              <table className="min-w-full divide-y divide-gray-200">
+              <table className="min-w-full divide-y divide-orange-100">
                 <thead className="bg-gray-50">
                   <tr>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Timestamp</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Order ID</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Receipt</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vendor ID</th>
-                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Vendor Name</th>
-                    <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount</th>
-                    <th className="px-6 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Timestamp</th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Order ID</th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Receipt</th>
+                    <th className="px-6 py-3 text-left text-xs font-bold text-gray-500 uppercase tracking-wider">Vendor</th>
+                    <th className="px-6 py-3 text-right text-xs font-bold text-gray-500 uppercase tracking-wider">Amount</th>
+                    <th className="px-6 py-3 text-center text-xs font-bold text-gray-500 uppercase tracking-wider">Status</th>
                   </tr>
                 </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                  {logs.map((log, index) => (
-                    // FIX: Unique key using ID and Index to prevent React Warning
-                    <tr key={`${log.id || 'log'}-${index}`} className="hover:bg-gray-50">
-                      
-                      {/* 1. Timestamp */}
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                <tbody className="bg-white divide-y divide-orange-50">
+                  {filteredLogs.map((log, index) => (
+                    <tr key={`${log.id || 'log'}-${index}`} className="hover:bg-orange-50/30 transition-colors">
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
                         {new Date(log.timestamp).toLocaleString('en-KE')}
                       </td>
-
-                      {/* 2. Order ID (NEW) */}
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-blue-600 font-medium font-mono">
-                        <div className="flex items-center gap-1">
-                            <ShoppingBag size={14} />
-                            {log.order_id}
-                        </div>
-                      </td>
-
-                      {/* 3. Receipt */}
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 font-mono">
-                        {log.receipt}
+                        {log.order_id}
                       </td>
-
-                      {/* 4. Vendor ID */}
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-600">
-                        #{log.vendor_id}
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">
+                        {log.receipt || '-'}
                       </td>
-
-                      {/* 5. Vendor Name */}
                       <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
                         {log.vendor_name}
                       </td>
-
-                      {/* 6. Amount */}
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-bold">
                         {formatCurrency(log.amount)}
                       </td>
-
-                      {/* 7. Status */}
                       <td className="px-6 py-4 whitespace-nowrap text-center">
-                        <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${
-                          log.status === 'Successful' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                        <span className={`inline-flex px-2.5 py-0.5 text-xs font-bold rounded-full border ${
+                          log.status === 'Successful' 
+                            ? 'bg-green-50 text-green-700 border-green-200' 
+                            : 'bg-red-50 text-red-700 border-red-200'
                         }`}>
                           {log.status}
                         </span>
@@ -329,9 +390,12 @@ const AdminDashboard = () => {
                   ))}
                 </tbody>
               </table>
-              {logs.length === 0 && (
+              {filteredLogs.length === 0 && (
                 <div className="text-center py-12">
-                  <p className="text-gray-500">No transactions found</p>
+                  <div className="bg-gray-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3">
+                    <FileText className="text-gray-300 h-8 w-8" />
+                  </div>
+                  <p className="text-gray-500 font-medium">No transactions found</p>
                 </div>
               )}
             </div>
