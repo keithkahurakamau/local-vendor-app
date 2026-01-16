@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Lock, Loader2, AlertTriangle, ArrowLeft } from 'lucide-react';
+// ADDED: Eye, EyeOff
+import { Shield, Lock, Loader2, AlertTriangle, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import api from '../../services/api';
 
 const AdminLogin = () => {
@@ -8,6 +9,9 @@ const AdminLogin = () => {
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  
+  // ADDED: Password toggle state
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -80,13 +84,26 @@ const AdminLogin = () => {
             <div className="relative">
                 <Lock className="absolute left-3 top-3.5 h-5 w-5 text-slate-500" />
                 <input
-                name="password"
-                type="password"
-                required
-                placeholder="••••••••"
-                className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg pl-10 pr-4 py-3 focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none transition-all placeholder-slate-600"
-                onChange={handleChange}
+                  name="password"
+                  // CHANGE: Dynamic type
+                  type={showPassword ? "text" : "password"}
+                  required
+                  placeholder="••••••••"
+                  className="w-full bg-slate-900 border border-slate-700 text-white rounded-lg pl-10 pr-12 py-3 focus:ring-2 focus:ring-red-500 focus:border-transparent outline-none transition-all placeholder-slate-600"
+                  onChange={handleChange}
                 />
+                {/* CHANGE: Toggle Button */}
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-3.5 text-slate-500 hover:text-slate-300 focus:outline-none transition-colors"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-5 w-5" />
+                  ) : (
+                    <Eye className="h-5 w-5" />
+                  )}
+                </button>
             </div>
           </div>
 
