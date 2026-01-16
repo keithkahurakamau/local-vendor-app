@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { User, Mail, Lock, Phone, MapPin, Store, Upload, Loader2, AlertCircle, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import { User, Mail, Lock, Phone, Store, Upload, Loader2, AlertCircle, ArrowLeft, Eye, EyeOff, Check, X } from 'lucide-react';
 import { authService } from '../../services/authService';
 import { vendorAPI } from '../../services/api';
 
@@ -41,8 +41,31 @@ const NewVendorRegister = () => {
   const [imagePreview, setImagePreview] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  
   const [showPassword, setShowPassword] = useState(false);
+
+  // --- PASSWORD VALIDATION STATE ---
+  const [passwordCriteria, setPasswordCriteria] = useState({
+    length: false,
+    number: false,
+    special: false,
+    upper: false
+  });
+  const [passwordScore, setPasswordScore] = useState(0);
+
+  // Monitor password changes
+  useEffect(() => {
+    const pwd = formData.password;
+    const criteria = {
+      length: pwd.length >= 8,
+      number: /\d/.test(pwd),
+      special: /[!@#$%^&*(),.?":{}|<>]/.test(pwd),
+      upper: /[A-Z]/.test(pwd)
+    };
+    
+    setPasswordCriteria(criteria);
+    const score = Object.values(criteria).filter(Boolean).length;
+    setPasswordScore(score);
+  }, [formData.password]);
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -63,6 +86,13 @@ const NewVendorRegister = () => {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    
+    // Block submission if password is weak
+    if (passwordScore < 3) {
+        setError("Please create a stronger password before continuing.");
+        return;
+    }
+
     setLoading(true);
     setError('');
 
@@ -102,8 +132,15 @@ const NewVendorRegister = () => {
     }
   };
 
+  // Helper for password strength color
+  const getStrengthColor = () => {
+    if (passwordScore <= 1) return 'bg-red-500';
+    if (passwordScore === 2) return 'bg-orange-500';
+    if (passwordScore === 3) return 'bg-yellow-500';
+    return 'bg-green-500';
+  };
+
   return (
-    // CHANGE 1: Main Gradient Background matching other pages
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 via-white to-orange-50 py-12 px-4 sm:px-6 lg:px-8 relative">
       
       {/* Back to Home Button */}
@@ -116,7 +153,6 @@ const NewVendorRegister = () => {
         </Link>
       </div>
 
-      {/* CHANGE 2: Card Styling (Border & Shadow) */}
       <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 bg-white rounded-3xl shadow-2xl shadow-orange-100/50 border border-orange-100 overflow-hidden relative z-10">
         
         {/* Left Side (Hero) */}
@@ -145,8 +181,8 @@ const NewVendorRegister = () => {
           </div>
 
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 flex items-center gap-3 rounded-r-lg">
-              <AlertCircle className="h-5 w-5 text-red-500" />
+            <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 flex items-center gap-3 rounded-r-lg animate-fadeIn">
+              <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
               <p className="text-sm text-red-700">{error}</p>
             </div>
           )}
@@ -155,9 +191,7 @@ const NewVendorRegister = () => {
             <div className="grid grid-cols-1 gap-5">
               
               <div className="relative">
-                {/* CHANGE 3: Input Icon Colors */}
                 <User className="absolute left-3 top-3.5 h-5 w-5 text-orange-300" />
-                {/* CHANGE 4: Input Borders */}
                 <input name="username" type="text" required placeholder="Full Name" className="w-full pl-10 pr-4 py-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all placeholder-gray-400" value={formData.username} onChange={handleChange} />
               </div>
               
@@ -176,30 +210,62 @@ const NewVendorRegister = () => {
                 <input name="phone_number" type="tel" required placeholder="M-Pesa Phone Number" className="w-full pl-10 pr-4 py-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all placeholder-gray-400" value={formData.phone_number} onChange={handleChange} />
               </div>
               
-              {/* Password Field with Toggle */}
-              <div className="relative">
-                <Lock className="absolute left-3 top-3.5 h-5 w-5 text-orange-300" />
-                <input 
-                  name="password" 
-                  type={showPassword ? "text" : "password"} 
-                  required 
-                  placeholder="Create Password" 
-                  className="w-full pl-10 pr-12 py-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all placeholder-gray-400" 
-                  value={formData.password} 
-                  onChange={handleChange} 
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-3.5 text-gray-400 hover:text-orange-500 focus:outline-none transition-colors"
-                >
-                  {showPassword ? (
-                    <EyeOff className="h-5 w-5" />
-                  ) : (
-                    <Eye className="h-5 w-5" />
-                  )}
-                </button>
+              {/* --- PASSWORD FIELD WITH VALIDATION --- */}
+              <div>
+                <div className="relative">
+                    <Lock className="absolute left-3 top-3.5 h-5 w-5 text-orange-300" />
+                    <input 
+                    name="password" 
+                    type={showPassword ? "text" : "password"} 
+                    required 
+                    placeholder="Create Password" 
+                    className="w-full pl-10 pr-12 py-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all placeholder-gray-400" 
+                    value={formData.password} 
+                    onChange={handleChange} 
+                    />
+                    <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-3.5 text-gray-400 hover:text-orange-500 focus:outline-none transition-colors"
+                    >
+                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                    </button>
+                </div>
+
+                {/* Password Strength Meter - Only show if user has started typing */}
+                {formData.password.length > 0 && (
+                    <div className="mt-3 animate-fadeIn">
+                        {/* Progress Bar */}
+                        <div className="h-1.5 w-full bg-gray-200 rounded-full mb-3 overflow-hidden">
+                            <div 
+                                className={`h-full transition-all duration-500 ease-out ${getStrengthColor()}`} 
+                                style={{ width: `${(passwordScore / 4) * 100}%` }}
+                            ></div>
+                        </div>
+
+                        {/* Criteria List */}
+                        <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
+                            <div className={`flex items-center gap-1.5 ${passwordCriteria.length ? 'text-green-600 font-medium' : ''}`}>
+                                {passwordCriteria.length ? <Check size={12} /> : <div className="w-3 h-3 rounded-full border border-gray-300" />}
+                                8+ Characters
+                            </div>
+                            <div className={`flex items-center gap-1.5 ${passwordCriteria.number ? 'text-green-600 font-medium' : ''}`}>
+                                {passwordCriteria.number ? <Check size={12} /> : <div className="w-3 h-3 rounded-full border border-gray-300" />}
+                                At least 1 number
+                            </div>
+                            <div className={`flex items-center gap-1.5 ${passwordCriteria.upper ? 'text-green-600 font-medium' : ''}`}>
+                                {passwordCriteria.upper ? <Check size={12} /> : <div className="w-3 h-3 rounded-full border border-gray-300" />}
+                                1 Uppercase Letter
+                            </div>
+                            <div className={`flex items-center gap-1.5 ${passwordCriteria.special ? 'text-green-600 font-medium' : ''}`}>
+                                {passwordCriteria.special ? <Check size={12} /> : <div className="w-3 h-3 rounded-full border border-gray-300" />}
+                                1 Special Char
+                            </div>
+                        </div>
+                    </div>
+                )}
               </div>
+              {/* -------------------------------------- */}
               
               <div className="border-2 border-dashed border-orange-200 rounded-xl p-4 text-center hover:bg-orange-50 hover:border-orange-300 transition-all cursor-pointer relative group">
                 <input type="file" accept="image/*" onChange={handleImageChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
