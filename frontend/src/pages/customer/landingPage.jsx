@@ -1,13 +1,11 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap, ZoomControl } from 'react-leaflet';
-import { FiSearch, FiMapPin, FiShoppingCart, FiClock, FiTruck, FiGrid, FiMap, FiArrowRight, FiNavigation, FiAlertCircle } from 'react-icons/fi';
+import { FiSearch, FiMapPin, FiShoppingCart, FiClock, FiTruck, FiGrid, FiMap, FiArrowRight, FiNavigation, FiAlertCircle, FiMenu, FiX, FiXCircle } from 'react-icons/fi';
 import { BiStore } from 'react-icons/bi';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { customerAPI } from '../../services/api'; 
 import { useLocation } from '../../context/LocationContext';
-import { useGeoLocation } from '../../hooks/useGeoLocation';
 import mapService from '../../services/mapService';
 
 // --- SMOOTH MAP UPDATER ---
@@ -152,7 +150,8 @@ const LandingPage = () => {
     const [vendors, setVendors] = useState([]);
     const [loading, setLoading] = useState(true);
     const [locationLoading, setLocationLoading] = useState(false);
-    
+    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
     // Map State
     const initialCenter = useMemo(() => [DEFAULT_LAT, DEFAULT_LNG], []); 
     const [mapCenter, setMapCenter] = useState([DEFAULT_LAT, DEFAULT_LNG]);
@@ -206,7 +205,14 @@ const LandingPage = () => {
 
     // --- ACTION HANDLERS ---
     const handleCategoryClick = (id) => setActiveCategory(id);
-    const handleClearSearch = () => { setSearchQuery(''); setActiveCategory('all'); };
+    
+    // Clear search and reset to nearby
+    const handleClearSearch = () => { 
+        setSearchQuery(''); 
+        setActiveCategory('all');
+        setError(null);
+        fetchNearbyVendors(manualLocation.lat, manualLocation.lng);
+    };
 
     const handleViewToggle = (mode) => {
         if (mode === viewMode) return;
@@ -228,6 +234,7 @@ const LandingPage = () => {
     const handleFindNearby = async () => {
         setLocationLoading(true);
         setError(null);
+        setSearchQuery(''); // Reset search when finding nearby
 
         const geoOptions = {
             enableHighAccuracy: false, 
@@ -263,63 +270,68 @@ const LandingPage = () => {
     const handleDragEnd = async (lat, lng) => {
         setManualLocation({ lat, lng });
         updateLocation(lat, lng);
+        // Only fetch nearby if we aren't currently in a "Search" mode, or maybe always refresh
         await fetchNearbyVendors(lat, lng);
     };
 
+    // --- SEARCH HANDLER (FIXED) ---
     const handleAdvancedSearch = async (e) => {
         e?.preventDefault();
+        
         if (!searchQuery.trim()) {
-            setError('Please enter a food item or place to search');
+            // If empty, just show nearby
+            handleClearSearch();
             return;
         }
+
         setSearchLoading(true);
         setError(null);
 
         try {
-            const places = await mapService.searchPlaces(searchQuery);
-            if (places.length > 0) {
-                const place = places[0];
-                setMapCenter([place.lat, place.lon]); 
-                setManualLocation({ lat: parseFloat(place.lat), lng: parseFloat(place.lon) });
-                await fetchNearbyVendors(place.lat, place.lon);
-            } else {
-                const searchLat = manualLocation?.lat || DEFAULT_LAT;
-                const searchLon = manualLocation?.lng || DEFAULT_LNG;
-                
-                const foundVendors = await mapService.searchVendors(searchQuery, searchLat, searchLon, radius);
-                
-                if (Array.isArray(foundVendors)) {
-                    setVendors(foundVendors);
-                    if (foundVendors.length === 0) setError(`No vendors found selling "${searchQuery}" nearby.`);
+            // Perform Item Search relative to the current pin location
+            const results = await mapService.searchVendors(
+                searchQuery, 
+                manualLocation.lat, 
+                manualLocation.lng
+            );
+            
+            if (Array.isArray(results)) {
+                setVendors(results);
+                if (results.length === 0) {
+                    setError(`No vendors found selling "${searchQuery}" nearby.`);
                 }
+            } else {
+                setVendors([]);
             }
-        } catch {
-            setError('Failed to search. Please try again.');
+        } catch (err) {
+            console.error(err);
+            setError('Search failed. Please try again.');
         } finally {
             setSearchLoading(false);
         }
     };
 
+    // --- FILTERING LOGIC ---
     const filteredVendors = useMemo(() => {
         return vendors.filter(vendor => {
+            // Filter 1: Category
             if (activeCategory !== 'all' && !vendor.categories?.includes(activeCategory)) return false;
-            if (searchQuery.trim() && vendors.length > 0 && !loading) {
-                 const query = searchQuery.toLowerCase();
-                 const text = `${vendor.name} ${vendor.cuisine} ${vendor.location}`.toLowerCase();
-                 return text.includes(query);
-            }
+            
+            // NOTE: We do NOT filter by searchQuery string here anymore.
+            // Why? Because the API search (`searchVendors`) already returns vendors that match the food item.
+            // If we filter again here by Vendor Name, we might hide a vendor named "John's Place" that sells "Pizza".
+            
             return true;
         });
-    }, [searchQuery, activeCategory, vendors, loading]);
+    }, [activeCategory, vendors]);
 
     return (
-        // CHANGE 1: Main background gradient
         <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-orange-50 font-sans text-gray-800 flex flex-col">
             
             {/* Navbar */}
             <nav className="bg-white/90 backdrop-blur-md sticky top-0 z-50 border-b border-orange-100">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex justify-between items-center h-16">
+                    <div className="flex justify-between items-center h-16 relative">
                         <Link to="/" className="flex items-center gap-2 cursor-pointer">
                             <div className="bg-orange-600 p-2 rounded-lg shadow-sm">
                                 <BiStore className="text-white text-xl" />
@@ -328,14 +340,52 @@ const LandingPage = () => {
                                 Hyper<span className="text-orange-600">Local</span>
                             </span>
                         </Link>
-                        <div className="flex items-center gap-4">
-                            <Link to="/vendor/login" className="hidden md:flex items-center gap-2 text-gray-600 hover:text-orange-600 font-medium transition-colors">
+
+                        <div className="hidden md:flex items-center gap-4">
+                            <Link to="/vendor/login" className="flex items-center gap-2 text-gray-600 hover:text-orange-600 font-medium transition-colors">
                                 <BiStore /> Vendor Login
                             </Link>
                             <Link to="/admin/login" className="bg-gray-900 text-white px-5 py-2 rounded-full font-medium hover:bg-orange-600 transition-all shadow-lg shadow-orange-100/20 active:scale-95">
                                 Admin
                             </Link>
                         </div>
+
+                        <div className="md:hidden">
+                            <button 
+                                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+                                className="p-2 text-gray-600 hover:text-orange-600 bg-orange-50 rounded-lg transition-colors border border-orange-100"
+                            >
+                                {isMobileMenuOpen ? <FiX size={24} /> : <FiMenu size={24} />}
+                            </button>
+                        </div>
+
+                        {isMobileMenuOpen && (
+                            <div className="absolute top-16 right-0 left-0 px-4 md:hidden z-50">
+                                <div className="bg-white/95 backdrop-blur-md border border-orange-100 rounded-2xl shadow-2xl p-4 flex flex-col gap-3 animate-slide-up origin-top">
+                                    <Link 
+                                        to="/vendor/login" 
+                                        className="flex items-center gap-3 p-3 rounded-xl hover:bg-orange-50 text-gray-700 hover:text-orange-700 transition-colors font-medium border border-transparent hover:border-orange-100"
+                                        onClick={() => setIsMobileMenuOpen(false)}
+                                    >
+                                        <div className="bg-orange-100 p-2 rounded-lg text-orange-600">
+                                            <BiStore size={20} />
+                                        </div>
+                                        Vendor Login
+                                    </Link>
+                                    
+                                    <Link 
+                                        to="/admin/login" 
+                                        className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-100 text-gray-700 hover:text-gray-900 transition-colors font-medium border border-transparent hover:border-gray-200"
+                                        onClick={() => setIsMobileMenuOpen(false)}
+                                    >
+                                        <div className="bg-gray-100 p-2 rounded-lg text-gray-600">
+                                            <FiGrid size={20} />
+                                        </div>
+                                        Admin Login
+                                    </Link>
+                                </div>
+                            </div>
+                        )}
                     </div>
                 </div>
             </nav>
@@ -359,19 +409,27 @@ const LandingPage = () => {
 
             {/* Search Container */}
             <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative z-20 -mt-24">
-                {/* CHANGE 2: Card shadow and border */}
                 <div className="bg-white rounded-2xl shadow-2xl shadow-orange-900/10 border border-orange-100 p-6 md:p-8">
                     <div className="flex flex-col md:flex-row gap-4">
                         <div className="flex-1 relative">
                             <FiSearch className="absolute left-4 top-3.5 text-orange-300 text-xl" />
                             <input
                                 type="text"
-                                placeholder="Search vendors, food, or places (e.g. Pilau, Westlands)..."
-                                className="w-full pl-12 pr-4 py-3 bg-orange-50 border border-orange-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all placeholder-gray-400"
+                                placeholder="Search food items (e.g. Pilau, Chapati)..."
+                                className="w-full pl-12 pr-10 py-3 bg-orange-50 border border-orange-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all placeholder-gray-400"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 onKeyPress={(e) => e.key === 'Enter' && handleAdvancedSearch()}
                             />
+                            {/* Clear Button */}
+                            {searchQuery && (
+                                <button 
+                                    onClick={handleClearSearch}
+                                    className="absolute right-3 top-3.5 text-gray-400 hover:text-orange-500 transition-colors"
+                                >
+                                    <FiXCircle size={20} />
+                                </button>
+                            )}
                         </div>
                         <button
                             onClick={handleAdvancedSearch}
@@ -388,7 +446,7 @@ const LandingPage = () => {
                             ) : (
                                 <>
                                     <FiSearch className="text-lg" />
-                                    <span>Search</span>
+                                    <span>Find Food</span>
                                 </>
                             )}
                         </button>
@@ -432,7 +490,7 @@ const LandingPage = () => {
                 </div>
 
                 {error && (
-                    <div className="mt-4 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-xl flex items-center gap-3 shadow-sm">
+                    <div className="mt-4 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-xl flex items-center gap-3 shadow-sm animate-fadeIn">
                         <FiAlertCircle className="text-red-500 text-xl flex-shrink-0" />
                         <p className="text-red-700 text-sm">{error}</p>
                         <button onClick={() => setError(null)} className="ml-auto text-red-500 hover:text-red-700 text-xl">×</button>
@@ -440,13 +498,14 @@ const LandingPage = () => {
                 )}
             </div>
 
-            {/* Content Area - Ref Attached Here */}
+            {/* Content Area */}
             <div ref={contentRef} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 flex-grow w-full">
                 <div className="flex flex-col md:flex-row justify-between items-end mb-10 gap-4">
                     <div>
-                        <h2 className="text-3xl font-bold text-gray-900">Nearby Local Vendors</h2>
+                        <h2 className="text-3xl font-bold text-gray-900">
+                            {searchQuery ? `Search Results for "${searchQuery}"` : "Nearby Local Vendors"}
+                        </h2>
                         <p className="text-gray-500 mt-2 font-medium">
-                            {/* Visual Feedback for distance constraint */}
                             {filteredVendors.length} spots found within 5km
                         </p>
                     </div>
@@ -470,11 +529,9 @@ const LandingPage = () => {
                         <p className="text-gray-500 mt-4">Finding vendors near you...</p>
                     </div>
                 ) : viewMode === 'grid' ? (
-                    /* --- GRID VIEW --- */
                     filteredVendors.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                             {filteredVendors.map((vendor) => (
-                                // CHANGE 3: Vendor Card Styling
                                 <div key={vendor.id} className="group bg-white rounded-2xl border border-orange-100 shadow-sm hover:shadow-xl hover:shadow-orange-100/50 hover:border-orange-200 hover:-translate-y-1 transition-all duration-300 overflow-hidden flex flex-col h-full">
                                     <div className="relative h-56 overflow-hidden">
                                         <VendorImage src={vendor.image} alt={vendor.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
@@ -506,13 +563,15 @@ const LandingPage = () => {
                     ) : (
                         <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-orange-200 shadow-sm">
                             <FiSearch className="mx-auto text-4xl text-orange-200 mb-4" />
-                            <h3 className="text-lg font-medium text-gray-900">No vendors found nearby</h3>
-                            <p className="text-gray-500">Try dragging the map marker to a different location.</p>
-                            <button onClick={handleClearSearch} className="mt-4 text-orange-600 font-bold hover:underline">Reset All</button>
+                            <h3 className="text-lg font-medium text-gray-900">No vendors found</h3>
+                            <p className="text-gray-500">
+                                {searchQuery ? `We couldn't find any vendor selling "${searchQuery}".` : "Try dragging the map marker to a different location."}
+                            </p>
+                            <button onClick={handleClearSearch} className="mt-4 text-orange-600 font-bold hover:underline">Reset Search</button>
                         </div>
                     )
                 ) : (
-                    /* --- MAP VIEW (Updated) --- */
+                    /* --- MAP VIEW --- */
                     <div className="bg-white rounded-2xl shadow-xl border border-orange-100 overflow-hidden relative">
                         <div className="h-[700px] relative w-full">
                             <MapContainer
@@ -521,18 +580,14 @@ const LandingPage = () => {
                                 scrollWheelZoom={true} 
                                 style={{ height: '100%', width: '100%' }}
                                 ref={mapRef}
-                                zoomControl={false} /* Disabled default to add custom placement */
+                                zoomControl={false}
                             >
                                 <TileLayer
                                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                                 />
-
-                                {/* ADDED: Custom Zoom Control at Bottom Right */}
                                 <ZoomControl position="bottomright" />
-
                                 <MapUpdater center={mapCenter} />
-
                                 <DraggableMarker 
                                     position={manualLocation} 
                                     setPosition={(pos) => {
@@ -540,8 +595,7 @@ const LandingPage = () => {
                                     }}
                                     onDragEnd={handleDragEnd}
                                 />
-
-                                {vendors.map((vendor) => (
+                                {filteredVendors.map((vendor) => (
                                     (vendor.latitude && vendor.longitude) || (vendor.lat && vendor.lon) ? (
                                         <Marker
                                             key={vendor.id}
@@ -588,7 +642,6 @@ const LandingPage = () => {
                                     ) : null
                                 ))}
                             </MapContainer>
-
                             <div className="absolute top-4 right-4 bg-white/90 backdrop-blur rounded-lg shadow-lg border border-orange-100 p-3 z-[400]">
                                 <div className="space-y-2">
                                     <div className="flex items-center gap-2 text-sm">
@@ -601,7 +654,6 @@ const LandingPage = () => {
                                     </div>
                                 </div>
                             </div>
-
                         </div>
                     </div>
                 )}
@@ -609,9 +661,7 @@ const LandingPage = () => {
 
             {/* Footer */}
             <footer className="bg-gray-900 text-white pt-20 pb-10 border-t border-gray-800 mt-auto relative overflow-hidden">
-                {/* Decorative background element */}
                 <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-500 via-red-500 to-orange-500"></div>
-                
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-16">
                         <div className="space-y-6">
@@ -624,10 +674,9 @@ const LandingPage = () => {
                                 </span>
                             </div>
                             <p className="text-gray-400 leading-relaxed max-w-sm">
-                                Empowering local businesses by connecting neighborhoods with their favorite flavors. Fast, fresh, and friendly delivery.
+                                Empowering local vendors by connecting neighborhoods with their favorite flavors. Fast, fresh, and friendly delivery.
                             </p>
                         </div>
-
                         <div className="md:pl-10">
                             <h3 className="text-lg font-bold text-white mb-6">Quick Navigation</h3>
                             <ul className="space-y-4 text-gray-400">
@@ -644,23 +693,20 @@ const LandingPage = () => {
                                 <li><button onClick={() => navigate('/vendor/login')} className="hover:text-orange-500 transition-colors flex items-center gap-2 group"><FiArrowRight className="text-sm group-hover:translate-x-1 transition-transform"/> Vendor Login</button></li>
                             </ul>
                         </div>
-
                         <div className="bg-gray-800 rounded-2xl p-8 border border-gray-700 shadow-xl relative overflow-hidden group hover:border-orange-500/30 transition-colors">
                             <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/10 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-orange-500/20"></div>
-                            
-                            <h3 className="text-xl font-bold text-white mb-3 relative z-10">Are you a Vendor?</h3>
+                            <h3 className="text-xl font-bold text-white mb-3 relative z-10">Want to be a Vendor?</h3>
                             <p className="text-gray-400 text-sm mb-6 relative z-10 leading-relaxed">
-                                Join our growing marketplace. Expand your reach and serve more customers in your neighborhood today.
+                                Join our growing marketplace. Reach more customers and boost your sales by registering your vendor with us today!
                             </p>
                             <button 
                                 onClick={() => navigate('/vendor/register')}
                                 className="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-3.5 px-6 rounded-xl transition-all hover:shadow-lg hover:shadow-orange-900/20 flex items-center justify-center gap-2 relative z-10 active:scale-95"
                             >
-                                Register Your Business <BiStore className="text-lg" />
+                                Register Your Vendor <BiStore className="text-lg" />
                             </button>
                         </div>
                     </div>
-
                     <div className="border-t border-gray-800 pt-8 flex flex-col md:flex-row justify-between items-center text-gray-500 text-sm">
                         <p>© 2025 Hyper Local Vendor. Nairobi, Kenya 🇰🇪</p>
                     </div>

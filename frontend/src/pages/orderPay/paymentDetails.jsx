@@ -254,7 +254,7 @@ export default function PaymentDetails() {
                     className="w-full bg-white border border-orange-200 text-gray-900 text-sm rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none block p-2.5 transition-all"
                 />
                 <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
-                    <FiShield size={12} className="text-orange-400" /> Riders will use this to find you.
+                    <FiShield size={12} className="text-orange-400" /> Your Vendor will use this to find you.
                 </p>
             </div>
           </div>
