@@ -139,24 +139,52 @@ const OrderPage = () => {
   );
 
   return (
-    // CHANGE 1: Main background changed from gray-50 to a soft orange gradient
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-orange-50 pb-24 lg:pb-0">
       
-      {/* Navbar */}
-      {/* CHANGE 2: Added border-orange-100 to blend navbar */}
-      <nav className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-orange-100 px-4 py-3 flex items-center gap-4 shadow-sm">
-        <button onClick={() => navigate(-1)} className="p-2 hover:bg-orange-50 rounded-full transition-colors">
-          <FiArrowLeft className="text-xl text-gray-700" />
-        </button>
-        <div className="flex-1 min-w-0">
-          <h1 className="font-bold text-lg text-gray-900 truncate">{vendor.name}</h1>
-          <div className="flex items-center gap-2 text-xs">
-            <span className={`px-2 py-0.5 rounded-full font-bold ${vendor.status === 'Open' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                {vendor.status || 'Open'}
-            </span>
-            <span className="text-gray-500 truncate max-w-[150px] flex items-center gap-1">
-                <FiMapPin size={10} className="text-orange-500" /> {vendor.address || 'Local Vendor'}
-            </span>
+      {/* UPDATED HEADER / NAVBAR */}
+      <nav className="sticky top-0 z-40 bg-white/80 backdrop-blur-lg border-b border-orange-100 shadow-sm transition-all duration-300">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+          <div className="flex items-center justify-between h-16 gap-4">
+            
+            {/* Left: Back Button & Vendor Info */}
+            <div className="flex items-center gap-4 flex-1 min-w-0">
+              <button 
+                onClick={() => navigate(-1)} 
+                className="p-2.5 bg-white border border-orange-100 rounded-full text-gray-500 hover:text-orange-600 hover:bg-orange-50 hover:border-orange-200 transition-all shadow-sm active:scale-95 flex-shrink-0"
+              >
+                <FiArrowLeft className="text-lg" />
+              </button>
+              
+              <div className="flex flex-col min-w-0">
+                <h1 className="font-bold text-xl text-gray-900 truncate leading-tight tracking-tight">
+                  {vendor.name}
+                </h1>
+                <div className="flex items-center gap-3 text-xs mt-0.5">
+                  <span className={`px-2 py-0.5 rounded-full font-bold border flex-shrink-0 ${
+                    vendor.status === 'Open' 
+                      ? 'bg-green-100 text-green-700 border-green-200' 
+                      : 'bg-red-100 text-red-700 border-red-200'
+                  }`}>
+                      {vendor.status || 'Open'}
+                  </span>
+                  <span className="text-gray-500 flex items-center gap-1 truncate font-medium">
+                      <FiMapPin size={12} className="text-orange-500 flex-shrink-0" /> 
+                      <span className="truncate">{vendor.address || 'Local Vendor'}</span>
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Right: Brand Logo (Visible on Tablet/Desktop) */}
+            <div className="hidden sm:flex items-center gap-2 pl-4 border-l border-orange-100 h-8">
+                <div className="bg-orange-600 p-1.5 rounded-lg shadow-sm shadow-orange-200">
+                    <BiStore className="text-white text-lg" />
+                </div>
+                <span className="font-bold text-gray-900 tracking-tight">
+                    Hyper<span className="text-orange-600">Local</span>
+                </span>
+            </div>
+
           </div>
         </div>
       </nav>
@@ -179,7 +207,7 @@ const OrderPage = () => {
             </div>
           </div>
 
-          {/* CHANGE 3: Sticky Search bar background matches main background */}
+          {/* Sticky Search Bar */}
           <div className="sticky top-[72px] z-30 bg-orange-50/95 backdrop-blur-sm py-2 -mx-2 px-2 rounded-lg">
             <div className="relative">
               <FiSearch className="absolute left-3 top-3.5 text-orange-300" />
@@ -188,7 +216,6 @@ const OrderPage = () => {
                 placeholder={`Search menu...`}
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
-                // CHANGE 4: Input border matches theme
                 className="w-full bg-white border border-orange-200 rounded-xl py-3 pl-10 pr-4 focus:outline-none focus:ring-2 focus:ring-orange-500 shadow-sm transition-all placeholder-gray-400"
               />
             </div>
@@ -200,7 +227,6 @@ const OrderPage = () => {
             </h3>
             
             {filteredItems.length === 0 ? (
-              // CHANGE 5: Empty state styling
               <div className="text-center py-16 bg-white rounded-xl border border-dashed border-orange-200">
                 <div className="bg-orange-50 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-3">
                     <FiSearch className="text-2xl text-orange-300" />
@@ -216,7 +242,6 @@ const OrderPage = () => {
                   const inCart = cart.find(c => (c.id || c.name) === itemId);
 
                   return (
-                    // CHANGE 6: Card styling (Orange border, orange hover shadow)
                     <div key={itemId} className="bg-white p-3 rounded-xl border border-orange-100 shadow-sm flex gap-3 hover:border-orange-300 hover:shadow-orange-100/50 transition-all group">
                       <div className="w-20 h-20 bg-orange-50 rounded-lg flex-shrink-0 overflow-hidden relative">
                         <VendorImage src={itemObj.image} alt={itemObj.name} className="w-full h-full object-cover" />
@@ -259,7 +284,6 @@ const OrderPage = () => {
 
         {/* RIGHT COLUMN: CART (Desktop) */}
         <div className="hidden lg:block lg:col-span-1">
-          {/* CHANGE 7: Cart container styling */}
           <div className={`sticky top-24 bg-white rounded-2xl border border-orange-100 shadow-xl shadow-orange-100/20 overflow-hidden flex flex-col transition-all duration-300 ${
             cartCollapsed ? 'h-16' : 'min-h-[400px] max-h-[85vh]'
           }`}>
@@ -285,7 +309,6 @@ const OrderPage = () => {
                     </div>
                   ) : (
                     cart.map(item => (
-                      // CHANGE 8: Cart item border
                       <div key={item.id || item.name} className="flex justify-between items-center text-sm p-3 rounded-xl border bg-white border-orange-50">
                         <div className="flex items-center gap-3">
                           <div className="bg-orange-50 text-orange-700 w-6 h-6 rounded flex items-center justify-center font-bold text-xs border border-orange-100">

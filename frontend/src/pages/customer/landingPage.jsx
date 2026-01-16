@@ -1,14 +1,11 @@
-import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap, ZoomControl } from 'react-leaflet';
-// ADDED: FiMenu (3 lines) and FiX (Close icon)
-import { FiSearch, FiMapPin, FiShoppingCart, FiClock, FiTruck, FiGrid, FiMap, FiArrowRight, FiNavigation, FiAlertCircle, FiMenu, FiX } from 'react-icons/fi';
+import { FiSearch, FiMapPin, FiShoppingCart, FiClock, FiTruck, FiGrid, FiMap, FiArrowRight, FiNavigation, FiAlertCircle, FiMenu, FiX, FiXCircle } from 'react-icons/fi';
 import { BiStore } from 'react-icons/bi';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
-import { customerAPI } from '../../services/api'; 
 import { useLocation } from '../../context/LocationContext';
-import { useGeoLocation } from '../../hooks/useGeoLocation';
 import mapService from '../../services/mapService';
 
 // --- SMOOTH MAP UPDATER ---
@@ -153,8 +150,6 @@ const LandingPage = () => {
     const [vendors, setVendors] = useState([]);
     const [loading, setLoading] = useState(true);
     const [locationLoading, setLocationLoading] = useState(false);
-    
-    // ADDED: State for mobile menu
     const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
     // Map State
@@ -210,7 +205,14 @@ const LandingPage = () => {
 
     // --- ACTION HANDLERS ---
     const handleCategoryClick = (id) => setActiveCategory(id);
-    const handleClearSearch = () => { setSearchQuery(''); setActiveCategory('all'); };
+    
+    // Clear search and reset to nearby
+    const handleClearSearch = () => { 
+        setSearchQuery(''); 
+        setActiveCategory('all');
+        setError(null);
+        fetchNearbyVendors(manualLocation.lat, manualLocation.lng);
+    };
 
     const handleViewToggle = (mode) => {
         if (mode === viewMode) return;
@@ -232,6 +234,7 @@ const LandingPage = () => {
     const handleFindNearby = async () => {
         setLocationLoading(true);
         setError(null);
+        setSearchQuery(''); // Reset search when finding nearby
 
         const geoOptions = {
             enableHighAccuracy: false, 
@@ -267,54 +270,60 @@ const LandingPage = () => {
     const handleDragEnd = async (lat, lng) => {
         setManualLocation({ lat, lng });
         updateLocation(lat, lng);
+        // Only fetch nearby if we aren't currently in a "Search" mode, or maybe always refresh
         await fetchNearbyVendors(lat, lng);
     };
 
+    // --- SEARCH HANDLER (FIXED) ---
     const handleAdvancedSearch = async (e) => {
         e?.preventDefault();
+        
         if (!searchQuery.trim()) {
-            setError('Please enter a food item or place to search');
+            // If empty, just show nearby
+            handleClearSearch();
             return;
         }
+
         setSearchLoading(true);
         setError(null);
 
         try {
-            const places = await mapService.searchPlaces(searchQuery);
-            if (places.length > 0) {
-                const place = places[0];
-                setMapCenter([place.lat, place.lon]); 
-                setManualLocation({ lat: parseFloat(place.lat), lng: parseFloat(place.lon) });
-                await fetchNearbyVendors(place.lat, place.lon);
-            } else {
-                const searchLat = manualLocation?.lat || DEFAULT_LAT;
-                const searchLon = manualLocation?.lng || DEFAULT_LNG;
-                
-                const foundVendors = await mapService.searchVendors(searchQuery, searchLat, searchLon, radius);
-                
-                if (Array.isArray(foundVendors)) {
-                    setVendors(foundVendors);
-                    if (foundVendors.length === 0) setError(`No vendors found selling "${searchQuery}" nearby.`);
+            // Perform Item Search relative to the current pin location
+            const results = await mapService.searchVendors(
+                searchQuery, 
+                manualLocation.lat, 
+                manualLocation.lng
+            );
+            
+            if (Array.isArray(results)) {
+                setVendors(results);
+                if (results.length === 0) {
+                    setError(`No vendors found selling "${searchQuery}" nearby.`);
                 }
+            } else {
+                setVendors([]);
             }
-        } catch {
-            setError('Failed to search. Please try again.');
+        } catch (err) {
+            console.error(err);
+            setError('Search failed. Please try again.');
         } finally {
             setSearchLoading(false);
         }
     };
 
+    // --- FILTERING LOGIC ---
     const filteredVendors = useMemo(() => {
         return vendors.filter(vendor => {
+            // Filter 1: Category
             if (activeCategory !== 'all' && !vendor.categories?.includes(activeCategory)) return false;
-            if (searchQuery.trim() && vendors.length > 0 && !loading) {
-                 const query = searchQuery.toLowerCase();
-                 const text = `${vendor.name} ${vendor.cuisine} ${vendor.location}`.toLowerCase();
-                 return text.includes(query);
-            }
+            
+            // NOTE: We do NOT filter by searchQuery string here anymore.
+            // Why? Because the API search (`searchVendors`) already returns vendors that match the food item.
+            // If we filter again here by Vendor Name, we might hide a vendor named "John's Place" that sells "Pizza".
+            
             return true;
         });
-    }, [searchQuery, activeCategory, vendors, loading]);
+    }, [activeCategory, vendors]);
 
     return (
         <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-orange-50 font-sans text-gray-800 flex flex-col">
@@ -323,7 +332,6 @@ const LandingPage = () => {
             <nav className="bg-white/90 backdrop-blur-md sticky top-0 z-50 border-b border-orange-100">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
                     <div className="flex justify-between items-center h-16 relative">
-                        {/* Logo */}
                         <Link to="/" className="flex items-center gap-2 cursor-pointer">
                             <div className="bg-orange-600 p-2 rounded-lg shadow-sm">
                                 <BiStore className="text-white text-xl" />
@@ -333,7 +341,6 @@ const LandingPage = () => {
                             </span>
                         </Link>
 
-                        {/* Desktop Menu */}
                         <div className="hidden md:flex items-center gap-4">
                             <Link to="/vendor/login" className="flex items-center gap-2 text-gray-600 hover:text-orange-600 font-medium transition-colors">
                                 <BiStore /> Vendor Login
@@ -343,7 +350,6 @@ const LandingPage = () => {
                             </Link>
                         </div>
 
-                        {/* Mobile Menu Toggle */}
                         <div className="md:hidden">
                             <button 
                                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -353,7 +359,6 @@ const LandingPage = () => {
                             </button>
                         </div>
 
-                        {/* Mobile Dropdown Menu (Glass Look) */}
                         {isMobileMenuOpen && (
                             <div className="absolute top-16 right-0 left-0 px-4 md:hidden z-50">
                                 <div className="bg-white/95 backdrop-blur-md border border-orange-100 rounded-2xl shadow-2xl p-4 flex flex-col gap-3 animate-slide-up origin-top">
@@ -410,12 +415,21 @@ const LandingPage = () => {
                             <FiSearch className="absolute left-4 top-3.5 text-orange-300 text-xl" />
                             <input
                                 type="text"
-                                placeholder="Search vendors, food, or places (e.g. Pilau, Westlands)..."
-                                className="w-full pl-12 pr-4 py-3 bg-orange-50 border border-orange-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all placeholder-gray-400"
+                                placeholder="Search food items (e.g. Pilau, Chapati)..."
+                                className="w-full pl-12 pr-10 py-3 bg-orange-50 border border-orange-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all placeholder-gray-400"
                                 value={searchQuery}
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 onKeyPress={(e) => e.key === 'Enter' && handleAdvancedSearch()}
                             />
+                            {/* Clear Button */}
+                            {searchQuery && (
+                                <button 
+                                    onClick={handleClearSearch}
+                                    className="absolute right-3 top-3.5 text-gray-400 hover:text-orange-500 transition-colors"
+                                >
+                                    <FiXCircle size={20} />
+                                </button>
+                            )}
                         </div>
                         <button
                             onClick={handleAdvancedSearch}
@@ -432,7 +446,7 @@ const LandingPage = () => {
                             ) : (
                                 <>
                                     <FiSearch className="text-lg" />
-                                    <span>Search</span>
+                                    <span>Find Food</span>
                                 </>
                             )}
                         </button>
@@ -476,7 +490,7 @@ const LandingPage = () => {
                 </div>
 
                 {error && (
-                    <div className="mt-4 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-xl flex items-center gap-3 shadow-sm">
+                    <div className="mt-4 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-xl flex items-center gap-3 shadow-sm animate-fadeIn">
                         <FiAlertCircle className="text-red-500 text-xl flex-shrink-0" />
                         <p className="text-red-700 text-sm">{error}</p>
                         <button onClick={() => setError(null)} className="ml-auto text-red-500 hover:text-red-700 text-xl">×</button>
@@ -484,11 +498,13 @@ const LandingPage = () => {
                 )}
             </div>
 
-            {/* Content Area - Ref Attached Here */}
+            {/* Content Area */}
             <div ref={contentRef} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 flex-grow w-full">
                 <div className="flex flex-col md:flex-row justify-between items-end mb-10 gap-4">
                     <div>
-                        <h2 className="text-3xl font-bold text-gray-900">Nearby Local Vendors</h2>
+                        <h2 className="text-3xl font-bold text-gray-900">
+                            {searchQuery ? `Search Results for "${searchQuery}"` : "Nearby Local Vendors"}
+                        </h2>
                         <p className="text-gray-500 mt-2 font-medium">
                             {filteredVendors.length} spots found within 5km
                         </p>
@@ -513,7 +529,6 @@ const LandingPage = () => {
                         <p className="text-gray-500 mt-4">Finding vendors near you...</p>
                     </div>
                 ) : viewMode === 'grid' ? (
-                    /* --- GRID VIEW --- */
                     filteredVendors.length > 0 ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
                             {filteredVendors.map((vendor) => (
@@ -548,9 +563,11 @@ const LandingPage = () => {
                     ) : (
                         <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-orange-200 shadow-sm">
                             <FiSearch className="mx-auto text-4xl text-orange-200 mb-4" />
-                            <h3 className="text-lg font-medium text-gray-900">No vendors found nearby</h3>
-                            <p className="text-gray-500">Try dragging the map marker to a different location.</p>
-                            <button onClick={handleClearSearch} className="mt-4 text-orange-600 font-bold hover:underline">Reset All</button>
+                            <h3 className="text-lg font-medium text-gray-900">No vendors found</h3>
+                            <p className="text-gray-500">
+                                {searchQuery ? `We couldn't find any vendor selling "${searchQuery}".` : "Try dragging the map marker to a different location."}
+                            </p>
+                            <button onClick={handleClearSearch} className="mt-4 text-orange-600 font-bold hover:underline">Reset Search</button>
                         </div>
                     )
                 ) : (
@@ -578,7 +595,7 @@ const LandingPage = () => {
                                     }}
                                     onDragEnd={handleDragEnd}
                                 />
-                                {vendors.map((vendor) => (
+                                {filteredVendors.map((vendor) => (
                                     (vendor.latitude && vendor.longitude) || (vendor.lat && vendor.lon) ? (
                                         <Marker
                                             key={vendor.id}
