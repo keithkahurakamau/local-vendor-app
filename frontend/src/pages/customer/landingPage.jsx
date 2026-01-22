@@ -1,12 +1,19 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap, ZoomControl } from 'react-leaflet';
-import { FiSearch, FiMapPin, FiShoppingCart, FiClock, FiTruck, FiGrid, FiMap, FiArrowRight, FiNavigation, FiAlertCircle, FiMenu, FiX, FiXCircle } from 'react-icons/fi';
+import { 
+  FiSearch, FiMapPin, FiShoppingCart, FiClock, FiTruck, FiGrid, FiMap, 
+  FiArrowRight, FiNavigation, FiAlertCircle, FiMenu, FiX, FiXCircle, 
+  FiLogOut, FiUser, FiChevronDown, FiSettings, FiCreditCard, FiActivity 
+} from 'react-icons/fi';
 import { BiStore } from 'react-icons/bi';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 import { useLocation } from '../../context/LocationContext';
+import { useAuth } from '../../context/AuthContext';
+import { useCart } from '../../context/CartContext'; // NEW: Import Cart Context
 import mapService from '../../services/mapService';
+import CartReminder from '../../components/common/CartReminder'; // NEW: Import Reminder Component
 
 // --- SMOOTH MAP UPDATER ---
 const MapUpdater = ({ center }) => {
@@ -73,8 +80,8 @@ const VendorTimer = ({ updatedAt }) => {
 
   return (
     <span className={`text-[10px] font-bold flex items-center gap-1 px-1.5 py-0.5 rounded ${isExpired ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'}`}>
-       <FiClock className={isExpired ? "" : "animate-pulse"} /> 
-       {timeLeft}
+        <FiClock className={isExpired ? "" : "animate-pulse"} /> 
+        {timeLeft}
     </span>
   );
 };
@@ -135,6 +142,8 @@ const vendorIcon = new L.Icon({
 const LandingPage = () => {
     const navigate = useNavigate();
     const { updateLocation } = useLocation();
+    const { user, logout } = useAuth();
+    const { cart } = useCart(); // Optional: used if you want to show cart badge in navbar
     
     // --- REFS ---
     const mapRef = useRef(null);
@@ -230,11 +239,16 @@ const LandingPage = () => {
         }, 100);
     };
 
+    const handleLogout = () => {
+        logout();
+        navigate('/');
+    };
+
     // --- GEOLOCATION HANDLER ---
     const handleFindNearby = async () => {
         setLocationLoading(true);
         setError(null);
-        setSearchQuery(''); // Reset search when finding nearby
+        setSearchQuery(''); 
 
         const geoOptions = {
             enableHighAccuracy: false, 
@@ -270,16 +284,14 @@ const LandingPage = () => {
     const handleDragEnd = async (lat, lng) => {
         setManualLocation({ lat, lng });
         updateLocation(lat, lng);
-        // Only fetch nearby if we aren't currently in a "Search" mode, or maybe always refresh
         await fetchNearbyVendors(lat, lng);
     };
 
-    // --- SEARCH HANDLER (FIXED) ---
+    // --- SEARCH HANDLER ---
     const handleAdvancedSearch = async (e) => {
         e?.preventDefault();
         
         if (!searchQuery.trim()) {
-            // If empty, just show nearby
             handleClearSearch();
             return;
         }
@@ -288,7 +300,6 @@ const LandingPage = () => {
         setError(null);
 
         try {
-            // Perform Item Search relative to the current pin location
             const results = await mapService.searchVendors(
                 searchQuery, 
                 manualLocation.lat, 
@@ -314,13 +325,7 @@ const LandingPage = () => {
     // --- FILTERING LOGIC ---
     const filteredVendors = useMemo(() => {
         return vendors.filter(vendor => {
-            // Filter 1: Category
             if (activeCategory !== 'all' && !vendor.categories?.includes(activeCategory)) return false;
-            
-            // NOTE: We do NOT filter by searchQuery string here anymore.
-            // Why? Because the API search (`searchVendors`) already returns vendors that match the food item.
-            // If we filter again here by Vendor Name, we might hide a vendor named "John's Place" that sells "Pizza".
-            
             return true;
         });
     }, [activeCategory, vendors]);
@@ -341,15 +346,82 @@ const LandingPage = () => {
                             </span>
                         </Link>
 
+                        {/* --- AUTH LOGIC FOR DESKTOP --- */}
                         <div className="hidden md:flex items-center gap-4">
-                            <Link to="/vendor/login" className="flex items-center gap-2 text-gray-600 hover:text-orange-600 font-medium transition-colors">
-                                <BiStore /> Vendor Login
-                            </Link>
-                            <Link to="/admin/login" className="bg-gray-900 text-white px-5 py-2 rounded-full font-medium hover:bg-orange-600 transition-all shadow-lg shadow-orange-100/20 active:scale-95">
-                                Admin
-                            </Link>
+                            {user ? (
+                                <div className="relative group">
+                                    {/* Dropdown Trigger */}
+                                    <button className="flex items-center gap-3 bg-white border border-gray-200 hover:border-orange-200 rounded-full pl-1 pr-4 py-1 transition-all shadow-sm hover:shadow-md">
+                                        <div className="h-8 w-8 rounded-full bg-orange-100 border border-orange-200 flex items-center justify-center overflow-hidden">
+                                            {user.storefront_image_url || user.picture ? (
+                                                <img src={user.storefront_image_url || user.picture} alt="Avatar" className="w-full h-full object-cover" />
+                                            ) : (
+                                                <span className="text-orange-700 font-bold text-sm">
+                                                    {(user.name || user.username || user.email?.charAt(0)).toUpperCase()}
+                                                </span>
+                                            )}
+                                        </div>
+                                        <div className="text-left hidden lg:block">
+                                            <p className="text-xs text-gray-500 font-medium">Hello,</p>
+                                            <p className="text-sm font-bold text-gray-900 leading-none max-w-[100px] truncate">
+                                                {user.name || user.username || 'User'}
+                                            </p>
+                                        </div>
+                                        <FiChevronDown className="text-gray-400 group-hover:text-orange-500 transition-colors" />
+                                    </button>
+
+                                    {/* Dropdown Menu */}
+                                    <div className="absolute right-0 top-full mt-2 w-64 bg-white rounded-2xl shadow-xl border border-gray-100 p-2 invisible opacity-0 group-hover:visible group-hover:opacity-100 transition-all transform origin-top-right z-50 animate-slide-up">
+                                        <div className="px-4 py-3 bg-gray-50 rounded-xl mb-2">
+                                            <p className="text-xs text-gray-500 font-medium">Signed in as</p>
+                                            <p className="text-sm font-bold text-gray-900 truncate">{user.email}</p>
+                                        </div>
+                                        
+                                        <Link to="/customer/profile" className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-orange-50 text-gray-700 hover:text-orange-700 transition-colors text-sm font-medium">
+                                            <FiActivity className="text-gray-400" /> Activity / Orders
+                                        </Link>
+                                        
+                                        <Link to="/customer/profile" className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-orange-50 text-gray-700 hover:text-orange-700 transition-colors text-sm font-medium">
+                                            <FiCreditCard className="text-gray-400" /> My Wallet <span className="ml-auto text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">KES 1,250</span>
+                                        </Link>
+                                        
+                                        <Link to="/customer/profile" className="flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-orange-50 text-gray-700 hover:text-orange-700 transition-colors text-sm font-medium">
+                                            <FiSettings className="text-gray-400" /> Manage Account
+                                        </Link>
+                                        
+                                        <div className="h-px bg-gray-100 my-2"></div>
+                                        
+                                        <button 
+                                            onClick={handleLogout}
+                                            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl hover:bg-red-50 text-red-600 transition-colors text-sm font-bold"
+                                        >
+                                            <FiLogOut /> Logout
+                                        </button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    <Link to="/vendor/login" className="flex items-center gap-2 text-gray-600 hover:text-orange-600 font-medium transition-colors">
+                                        <BiStore /> Vendor Login
+                                    </Link>
+                                    
+                                    {/* Admin Button Restored */}
+                                    <Link to="/admin/login" className="flex items-center gap-2 text-gray-600 hover:text-gray-900 font-medium transition-colors">
+                                        Admin
+                                    </Link>
+                                    
+                                    <div className="h-6 w-px bg-gray-200 mx-2"></div>
+                                    <Link to="/login" className="text-gray-900 hover:text-orange-600 font-bold transition-colors">
+                                        Login
+                                    </Link>
+                                    <Link to="/register" className="bg-gray-900 text-white px-5 py-2 rounded-full font-medium hover:bg-orange-600 transition-all shadow-lg shadow-orange-100/20 active:scale-95">
+                                        Sign Up
+                                    </Link>
+                                </>
+                            )}
                         </div>
 
+                        {/* Mobile Menu Button */}
                         <div className="md:hidden">
                             <button 
                                 onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
@@ -359,30 +431,73 @@ const LandingPage = () => {
                             </button>
                         </div>
 
+                        {/* Mobile Menu Dropdown */}
                         {isMobileMenuOpen && (
                             <div className="absolute top-16 right-0 left-0 px-4 md:hidden z-50">
                                 <div className="bg-white/95 backdrop-blur-md border border-orange-100 rounded-2xl shadow-2xl p-4 flex flex-col gap-3 animate-slide-up origin-top">
-                                    <Link 
-                                        to="/vendor/login" 
-                                        className="flex items-center gap-3 p-3 rounded-xl hover:bg-orange-50 text-gray-700 hover:text-orange-700 transition-colors font-medium border border-transparent hover:border-orange-100"
-                                        onClick={() => setIsMobileMenuOpen(false)}
-                                    >
-                                        <div className="bg-orange-100 p-2 rounded-lg text-orange-600">
-                                            <BiStore size={20} />
-                                        </div>
-                                        Vendor Login
-                                    </Link>
-                                    
-                                    <Link 
-                                        to="/admin/login" 
-                                        className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-100 text-gray-700 hover:text-gray-900 transition-colors font-medium border border-transparent hover:border-gray-200"
-                                        onClick={() => setIsMobileMenuOpen(false)}
-                                    >
-                                        <div className="bg-gray-100 p-2 rounded-lg text-gray-600">
-                                            <FiGrid size={20} />
-                                        </div>
-                                        Admin Login
-                                    </Link>
+                                    {user ? (
+                                        <>
+                                            <div className="flex items-center gap-3 p-3 bg-orange-50 rounded-xl text-gray-700 font-bold border border-orange-100">
+                                                <div className="h-10 w-10 rounded-full bg-orange-200 flex items-center justify-center text-orange-700">
+                                                    <FiUser size={20} />
+                                                </div>
+                                                <div>
+                                                    <p>{user.name || user.username || 'User'}</p>
+                                                    <p className="text-xs text-gray-500 font-normal">{user.email}</p>
+                                                </div>
+                                            </div>
+                                            
+                                            <Link to="/customer/profile" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 text-gray-600 font-medium">
+                                                <FiActivity /> Activity
+                                            </Link>
+                                            <Link to="/customer/profile" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 text-gray-600 font-medium">
+                                                <FiCreditCard /> Wallet
+                                            </Link>
+                                            <Link to="/customer/profile" onClick={() => setIsMobileMenuOpen(false)} className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-50 text-gray-600 font-medium">
+                                                <FiSettings /> Settings
+                                            </Link>
+
+                                            <div className="h-px bg-gray-100 my-1"></div>
+
+                                            <button 
+                                                onClick={() => { handleLogout(); setIsMobileMenuOpen(false); }}
+                                                className="flex items-center gap-3 p-3 rounded-xl hover:bg-red-50 text-red-600 transition-colors font-medium"
+                                            >
+                                                <FiLogOut /> Logout
+                                            </button>
+                                        </>
+                                    ) : (
+                                        <>
+                                            <Link 
+                                                to="/login"
+                                                onClick={() => setIsMobileMenuOpen(false)}
+                                                className="flex items-center gap-3 p-3 rounded-xl hover:bg-orange-50 text-gray-700 hover:text-orange-700 transition-colors font-medium"
+                                            >
+                                                Customer Login
+                                            </Link>
+                                            <Link 
+                                                to="/register"
+                                                onClick={() => setIsMobileMenuOpen(false)}
+                                                className="flex items-center gap-3 p-3 rounded-xl hover:bg-orange-50 text-gray-700 hover:text-orange-700 transition-colors font-medium"
+                                            >
+                                                Customer Sign Up
+                                            </Link>
+                                            <Link 
+                                                to="/vendor/login"
+                                                onClick={() => setIsMobileMenuOpen(false)}
+                                                className="flex items-center gap-3 p-3 rounded-xl hover:bg-orange-50 text-gray-700 hover:text-orange-700 transition-colors font-medium"
+                                            >
+                                                <BiStore /> Vendor Login
+                                            </Link>
+                                            <Link 
+                                                to="/admin/login"
+                                                onClick={() => setIsMobileMenuOpen(false)}
+                                                className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-100 text-gray-700 transition-colors font-medium"
+                                            >
+                                                Admin Login
+                                            </Link>
+                                        </>
+                                    )}
                                 </div>
                             </div>
                         )}
@@ -421,7 +536,6 @@ const LandingPage = () => {
                                 onChange={(e) => setSearchQuery(e.target.value)}
                                 onKeyPress={(e) => e.key === 'Enter' && handleAdvancedSearch()}
                             />
-                            {/* Clear Button */}
                             {searchQuery && (
                                 <button 
                                     onClick={handleClearSearch}
@@ -658,6 +772,9 @@ const LandingPage = () => {
                     </div>
                 )}
             </div>
+
+            {/* --- NEW: CART REMINDER --- */}
+            <CartReminder />
 
             {/* Footer */}
             <footer className="bg-gray-900 text-white pt-20 pb-10 border-t border-gray-800 mt-auto relative overflow-hidden">

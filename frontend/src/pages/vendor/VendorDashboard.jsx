@@ -1,15 +1,20 @@
-import React, { useContext } from 'react';
+import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Store, MapPin, Package, LogOut, TrendingUp, DollarSign, Clock } from 'lucide-react';
-import { AuthContext } from '../../context/AuthContext';
+import { Store, MapPin, Package, LogOut, TrendingUp, DollarSign, Clock, Settings } from 'lucide-react';
+import { useAuth } from '../../context/AuthContext';
 
 const VendorDashboard = () => {
   const navigate = useNavigate();
-  const { logout } = useContext(AuthContext);
+  const { logout } = useAuth();
 
   const handleLogout = () => {
+    // 1. Clear the User State
     logout();
-    navigate('/customer');
+    
+    // 2. Force navigation to Landing Page
+    // Using window.location.href ensures a clean state reset and bypasses 
+    // any ProtectedRoute race conditions that might redirect to login.
+    window.location.href = '/'; 
   };
 
   const dashboardCards = [
@@ -18,7 +23,6 @@ const VendorDashboard = () => {
       description: 'Update your location and menu items',
       icon: MapPin,
       action: () => navigate('/vendor/checkin'),
-      // CHANGE: Use orange/amber for consistency
       color: 'bg-orange-500', 
       bgColor: 'bg-orange-50'
     },
@@ -27,18 +31,23 @@ const VendorDashboard = () => {
       description: 'See your completed transactions',
       icon: Package,
       action: () => navigate('/vendor/orders'),
-      // CHANGE: Use a complementary teal/green
       color: 'bg-teal-600',
       bgColor: 'bg-teal-50'
+    },
+    {
+      title: 'Settings',
+      description: 'Edit profile, image, and password',
+      icon: Settings,
+      action: () => navigate('/vendor/profile'),
+      color: 'bg-indigo-600',
+      bgColor: 'bg-indigo-50'
     }
   ];
 
   return (
-    // CHANGE 1: Main Gradient Background
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-orange-50">
       
       {/* Header */}
-      {/* CHANGE 2: Navbar border */}
       <nav className="bg-white/90 backdrop-blur-md shadow-sm border-b border-orange-100 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between h-16">
@@ -66,7 +75,6 @@ const VendorDashboard = () => {
       <div className="max-w-7xl mx-auto py-6 px-4 sm:px-6 lg:px-8 space-y-8">
         
         {/* Welcome Section */}
-        {/* CHANGE 3: Card Styling */}
         <div className="bg-white rounded-2xl shadow-xl shadow-orange-100/50 border border-orange-100 p-6">
           <div className="flex items-center gap-4">
             <div className="bg-orange-50 p-4 rounded-full border border-orange-100">
@@ -80,7 +88,7 @@ const VendorDashboard = () => {
         </div>
 
         {/* Quick Actions */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {dashboardCards.map((card, index) => (
             <div
               key={index}

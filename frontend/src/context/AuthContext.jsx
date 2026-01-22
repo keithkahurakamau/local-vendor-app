@@ -1,44 +1,44 @@
-import React, { createContext, useState, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 
-export const AuthContext = createContext();
+const AuthContext = createContext(null);
 
 export const AuthProvider = ({ children }) => {
-  const [adminToken, setAdminToken] = useState(localStorage.getItem('adminToken') || null);
-  const [vendorToken, setVendorToken] = useState(localStorage.getItem('vendorToken') || null);
-  const isAuthenticated = !!adminToken || !!vendorToken;
+  const [user, setUser] = useState(null);
+  const [token, setToken] = useState(localStorage.getItem('token'));
+  const navigate = useNavigate();
 
   useEffect(() => {
-    if (adminToken) {
-      localStorage.setItem('adminToken', adminToken);
-    } else {
-      localStorage.removeItem('adminToken');
+    // Restore session on refresh
+    const storedUser = localStorage.getItem('user');
+    const storedToken = localStorage.getItem('token');
+    
+    if (storedToken && storedUser) {
+      setUser(JSON.parse(storedUser));
+      setToken(storedToken);
     }
-  }, [adminToken]);
+  }, []);
 
-  useEffect(() => {
-    if (vendorToken) {
-      localStorage.setItem('vendorToken', vendorToken);
-    } else {
-      localStorage.removeItem('vendorToken');
-    }
-  }, [vendorToken]);
-
-  const adminLogin = (newToken) => {
-    setAdminToken(newToken);
-  };
-
-  const vendorLogin = (newToken) => {
-    setVendorToken(newToken);
+  const login = (newToken, userData) => {
+    localStorage.setItem('token', newToken);
+    localStorage.setItem('user', JSON.stringify(userData));
+    setToken(newToken);
+    setUser(userData);
   };
 
   const logout = () => {
-    setAdminToken(null);
-    setVendorToken(null);
+    localStorage.removeItem('token');
+    localStorage.removeItem('user');
+    setToken(null);
+    setUser(null);
+    navigate('/');
   };
 
   return (
-    <AuthContext.Provider value={{ adminToken, vendorToken, isAuthenticated, adminLogin, vendorLogin, logout }}>
+    <AuthContext.Provider value={{ user, token, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
 };
+
+export const useAuth = () => useContext(AuthContext);

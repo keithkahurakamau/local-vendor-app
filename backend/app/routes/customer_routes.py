@@ -5,6 +5,7 @@ from app.utils.geospatial import haversine_distance
 from app.utils.mpesa_handler import MpesaHandler
 from datetime import datetime
 from flask_cors import cross_origin
+
 bp = Blueprint('customer', __name__, url_prefix='/api/customer')
 mpesa_handler = MpesaHandler()
 
@@ -67,7 +68,7 @@ def get_nearby_vendors():
                 'id': v.id, 
                 'vendor_id': v.vendor_id,
                 'latitude': v.latitude, 
-                'longitude': v.longitude,
+                'longitude': v.longitude, 
                 'distance': round(dist, 1),
                 'menu': v.menu_items,
                 'name': v.vendor.business_name if v.vendor else "Unknown",
@@ -177,6 +178,7 @@ def initiate_payment():
                 'success': True,
                 'message': 'STK Push initiated',
                 'order_number': new_order.order_number,
+                'order_id': new_order.order_number, # IMPORTANT: Return this for frontend routing
                 'checkout_id': checkout_id
             }), 200
         else:
@@ -209,6 +211,12 @@ def initiate_payment():
 def mpesa_callback():
     try:
         data = request.get_json()
+        
+        # --- DEBUG PRINT ---
+        print("🔥🔥 M-PESA CALLBACK RECEIVED 🔥🔥")
+        # print(data) # Uncomment to see full payload if needed
+        # -------------------
+
         if not data or 'Body' not in data:
             return jsonify({'result': 'ignored'}), 200
 
@@ -240,20 +248,41 @@ def mpesa_callback():
         return jsonify({'error': 'Server Error'}), 500
 
 # --- 6. CHECK PAYMENT STATUS (POLLING) ---
-@bp.route('/payment-status/<checkout_id>', methods=['GET'])
+@bp.route('/payment-status/<string:identifier>', methods=['GET'])
 @cross_origin()
-def check_payment_status(checkout_id):
+def check_payment_status(identifier):
     """
     Checks the status of a specific M-Pesa transaction.
-    Called repeatedly by the frontend while waiting for the PIN.
+    Accepts EITHER:
+    1. Order Number (HL-XXXXXX)
+    2. Checkout Request ID (ws_CO_...)
     """
     try:
-        txn = Transaction.query.filter_by(checkout_request_id=checkout_id).first()
+        txn = None
+
+        # 1. Try finding by Order Number (HL-...)
+        if identifier.startswith('HL-'):
+            order = Order.query.filter_by(order_number=identifier).first()
+            if order:
+                txn = Transaction.query.filter_by(order_id=order.id).first()
+        
+        # 2. Fallback: Try finding by Checkout Request ID
+        if not txn:
+            txn = Transaction.query.filter_by(checkout_request_id=identifier).first()
         
         if not txn:
             # If not found yet (race condition), return PENDING
             return jsonify({'status': 'PENDING'}), 200
         
-        return jsonify({'status': txn.status}), 200
+        # Normalize status for frontend
+        status = txn.status
+        if status == 'SUCCESSFUL': status = 'COMPLETED'
+
+        return jsonify({
+            'status': status,
+            'amount': txn.amount,
+            'receipt': txn.mpesa_receipt_number
+        }), 200
+
     except Exception as e:
         return jsonify({'error': str(e)}), 500

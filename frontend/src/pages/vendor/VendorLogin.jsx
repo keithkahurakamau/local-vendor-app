@@ -1,25 +1,27 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-// ADDED: Eye and EyeOff icons
 import { User, Lock, Loader2, AlertCircle, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import { authService } from '../../services/authService';
+// 1. IMPORT USEAUTH (Critical for redirection to work)
+import { useAuth } from '../../context/AuthContext';
 
 const VendorLogin = () => {
   const navigate = useNavigate();
+  // 2. GET LOGIN FUNCTION
+  const { login } = useAuth();
   
   const [formData, setFormData] = useState({
     email: '',
     password: ''
   });
   
-  // ADDED: State for password visibility
   const [showPassword, setShowPassword] = useState(false);
-  
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
-    localStorage.removeItem('user');
+    // Optional: Clear storage if you want to force fresh login
+    // localStorage.removeItem('user'); 
   }, []);
 
   const handleChange = (e) => {
@@ -32,8 +34,14 @@ const VendorLogin = () => {
     setError('');
 
     try {
-      await authService.login(formData);
-      navigate('/vendor/dashboard');
+      // 3. CAPTURE RESPONSE
+      const response = await authService.login(formData);
+      
+      // 4. UPDATE GLOBAL STATE
+      if (response.token && response.user) {
+        login(response.token, response.user);
+        navigate('/vendor/dashboard');
+      }
     } catch (err) {
       console.error(err);
       setError(err.response?.data?.error || 'Invalid credentials');
@@ -90,17 +98,14 @@ const VendorLogin = () => {
               <Lock className="absolute left-3 top-3.5 h-5 w-5 text-orange-300" />
               <input
                 name="password"
-                // CHANGE: Dynamic type based on state
                 type={showPassword ? "text" : "password"}
                 required
                 placeholder="Password"
-                // CHANGE: Added pr-12 for the eye icon space
                 className="w-full pl-10 pr-12 py-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all placeholder-gray-400"
                 value={formData.password}
                 onChange={handleChange}
               />
               
-              {/* CHANGE: Toggle Button */}
               <button
                 type="button"
                 onClick={() => setShowPassword(!showPassword)}

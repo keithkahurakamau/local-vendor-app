@@ -7,7 +7,8 @@ import {
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { vendorAPI } from '../../services/api';
+import { vendorAPI } from '../../services/api'; // Correct import
+import { useAuth } from '../../context/AuthContext'; // NEW: Use Context for Logout
 
 // --- LEAFLET ICON FIX ---
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -52,6 +53,7 @@ const DraggableMarker = ({ position, setPosition, onDragEnd }) => {
 
 const VendorCheckIn = () => {
   const navigate = useNavigate();
+  const { logout } = useAuth(); // Use Auth Context
 
   // --- STATE ---
   const [isOpen, setIsOpen] = useState(false);
@@ -80,9 +82,17 @@ const VendorCheckIn = () => {
     const fetchStatus = async () => {
         try {
             const userStr = localStorage.getItem('user');
-            if (!userStr) return; 
+            // Basic check if logged in (token presence handled by api interceptor)
+            if (!userStr) {
+                // Double check if token exists standalone
+                if(!localStorage.getItem('token')) return;
+            }
 
+            // This calls GET /api/vendor/status
+            // The interceptor in api.js will attach the token
             const response = await vendorAPI.getVendorStatus();
+            
+            // NOTE: response is the Axios object, so we access .data
             const { is_open, remaining_seconds, address: savedAddress, menu_items } = response.data;
 
             const seconds = parseInt(remaining_seconds, 10) || 0;
@@ -106,14 +116,15 @@ const VendorCheckIn = () => {
         } catch (error) {
             console.error("Failed to fetch status:", error);
             if (error.response && (error.response.status === 401 || error.response.status === 422)) {
-                localStorage.removeItem('user');
+                // Token invalid
+                logout(); // Clear context
                 navigate('/vendor/login');
             }
         }
     };
 
     fetchStatus();
-  }, [navigate]);
+  }, [navigate, logout]);
 
   // --- 2. TIMER LOGIC ---
   useEffect(() => {
@@ -204,7 +215,6 @@ const VendorCheckIn = () => {
   };
 
   const handleReverseGeocode = async (lat, lng) => {
-    // Update numeric Lat/Lon immediately
     setPosition({ lat, lng });
     try {
       const response = await fetch(
@@ -341,6 +351,11 @@ const VendorCheckIn = () => {
     }
   };
 
+  const handleLogout = () => {
+      logout();
+      window.location.href = '/'; // Hard redirect to clear everything
+  };
+
   return (
     <div className="min-h-screen bg-orange-50/50 pb-20 font-sans">
       <nav className="bg-white border-b border-gray-200 sticky top-0 z-40 px-6 py-4 flex items-center justify-between shadow-sm">
@@ -355,10 +370,7 @@ const VendorCheckIn = () => {
           <button onClick={() => navigate('/vendor/orders')} className="flex items-center gap-2 text-sm font-medium text-orange-600 hover:text-orange-700 hover:bg-orange-50 px-3 py-2 rounded-lg transition-colors">
             <ShoppingBag className="h-4 w-4" /> View Orders
           </button>
-          <button onClick={() => {
-              localStorage.removeItem('user'); 
-              navigate('/vendor/login');
-          }} className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg transition-colors">
+          <button onClick={handleLogout} className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg transition-colors">
             <LogOut className="h-4 w-4" /> Logout
           </button>
         </div>
@@ -434,7 +446,6 @@ const VendorCheckIn = () => {
             </button>
           </div>
 
-          {/* --- REQUIREMENT: Visual confirmation of coordinates --- */}
           <div className="mb-4 flex items-center gap-4 text-xs font-mono text-gray-500 bg-gray-50 p-2 rounded-lg border border-gray-100">
              <div className="flex items-center gap-2">
                 <span className="font-bold text-gray-700">LAT:</span> {position.lat.toFixed(6)}
@@ -456,7 +467,6 @@ const VendorCheckIn = () => {
 
         {/* MENU SECTION */}
         <section className={`bg-white rounded-3xl shadow-sm border border-orange-100 p-6 sm:p-8`}>
-          {/* ... (Menu section remains unchanged) ... */}
           <div className="flex items-center justify-between mb-6">
             <h2 className="text-lg font-bold text-gray-900">Menu Update</h2>
             <span className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded-md">Live Preview</span>

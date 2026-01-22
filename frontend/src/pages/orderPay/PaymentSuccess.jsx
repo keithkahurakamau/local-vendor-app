@@ -6,7 +6,10 @@ import mapService from '../../services/mapService';
 const PaymentSuccess = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { amount, vendor, phone, orderId, paymentResponse } = location.state || {};
+  
+  // Destructure state passed from PaymentDetails.jsx
+  // Note: orderId here refers to your HL-XXXXXX number
+  const { amount, vendor, phone, orderId } = location.state || {};
 
   const [status, setStatus] = useState('pending'); // pending, success, failed
   const [message, setMessage] = useState('Please enter your M-Pesa PIN...');
@@ -14,7 +17,7 @@ const PaymentSuccess = () => {
 
   // Auto-check status every 3 seconds
   useEffect(() => {
-    if (!paymentResponse?.checkout_id) return;
+    if (!orderId) return;
 
     let attempts = 0;
     const maxAttempts = 20; // Stop polling after ~60 seconds
@@ -35,20 +38,22 @@ const PaymentSuccess = () => {
     }, 3000); 
 
     return () => clearInterval(interval);
-  }, [paymentResponse, status]);
+  }, [orderId, status]);
 
   const checkStatus = async () => {
     setLoading(true);
     try {
-      const checkoutId = paymentResponse?.checkout_id;
+      console.log("Polling Status for Order:", orderId);
       
-      const data = await mapService.checkPaymentStatus(checkoutId);
-      console.log("Polling Status:", data.status);
+      // CALL BACKEND using the Order ID (HL-...)
+      const data = await mapService.checkPaymentStatus(orderId);
+      
+      console.log("Backend Response:", data.status);
 
-      if (data.status === 'SUCCESSFUL') {
+      if (data.status === 'SUCCESSFUL' || data.status === 'COMPLETED') {
         setStatus('success');
         setMessage('Payment received successfully!');
-      } else if (data.status === 'FAILED') {
+      } else if (data.status === 'FAILED' || data.status === 'CANCELLED') {
         setStatus('failed');
         setMessage('Payment was cancelled or failed.');
       } 
@@ -139,12 +144,19 @@ const PaymentSuccess = () => {
           )}
           
           {/* Navigation Button Logic */}
-          {status !== 'pending' ? (
+          {status === 'success' ? (
               <button 
-                onClick={() => navigate('/')}
+                onClick={() => navigate('/customer/profile')} 
                 className="w-full py-3.5 bg-gray-900 text-white font-bold rounded-xl shadow-lg hover:bg-orange-600 transition-all flex items-center justify-center gap-2 transform hover:-translate-y-0.5"
               >
-                <FiHome /> Return to Home
+                Track Order
+              </button>
+          ) : status === 'failed' ? (
+              <button 
+                onClick={() => navigate(-1)} 
+                className="w-full py-3.5 bg-red-600 text-white font-bold rounded-xl hover:bg-red-700 transition-colors"
+              >
+                Try Again
               </button>
           ) : (
               <button 

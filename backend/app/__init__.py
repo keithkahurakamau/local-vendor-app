@@ -2,7 +2,7 @@ import os
 from flask import Flask
 import cloudinary
 from app.config import config
-from app.extensions import db, cors, jwt, migrate 
+from app.extensions import db, cors, jwt, migrate, mail
 
 def create_app(config_name='development'):
     app = Flask(__name__)
@@ -13,8 +13,7 @@ def create_app(config_name='development'):
     # 2. Initialize Extensions
     db.init_app(app)
     
-    # Enable CORS for all domains (Crucial for frontend communication)
-    # Allow only your React frontend to communicate
+    # Enable CORS for frontend communication
     cors.init_app(app, resources={r"/*": {
         "origins": ["http://localhost:5173", "http://127.0.0.1:5173", "*"],
         "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
@@ -25,6 +24,7 @@ def create_app(config_name='development'):
 
     jwt.init_app(app)
     migrate.init_app(app, db)
+    mail.init_app(app)  # MVP 2: Init Email
 
     # Configure Cloudinary
     if app.config.get('CLOUDINARY_CLOUD_NAME'):
@@ -34,11 +34,9 @@ def create_app(config_name='development'):
             api_secret=app.config['CLOUDINARY_API_SECRET']
         )
     
-    # 3. Import Blueprints
-    # Note: We import here to avoid circular dependency issues
+    # 3. Register Blueprints
     from app.routes import customer_routes, admin_routes, auth_routes, vendor_routes
 
-    # 4. Register Blueprints (THIS WAS MISSING)
     app.register_blueprint(customer_routes.bp) 
     app.register_blueprint(admin_routes.bp)
     app.register_blueprint(auth_routes.bp)
@@ -47,7 +45,7 @@ def create_app(config_name='development'):
     @app.route('/')
     def index():
         return {
-            'message': 'Local Vendor API is running',
+            'message': 'Local Vendor API is running (MVP 2)',
             'status': 'active'
         }
 

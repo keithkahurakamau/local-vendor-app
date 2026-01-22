@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { User, Mail, Lock, Phone, Store, Upload, Loader2, AlertCircle, ArrowLeft, Eye, EyeOff, Check, X } from 'lucide-react';
+import { User, Mail, Lock, Phone, Store, Upload, Loader2, AlertCircle, ArrowLeft, Eye, EyeOff, Check } from 'lucide-react';
 import { authService } from '../../services/authService';
 import { vendorAPI } from '../../services/api';
+// 1. IMPORT USEAUTH HOOK
+import { useAuth } from '../../context/AuthContext'; 
+import GoogleLoginButton from '../../components/common/GoogleLoginButton';
 
-// --- SAFE IMAGE COMPONENT ---
 const SafeHeroImage = ({ src, alt }) => {
   const [hasError, setHasError] = useState(false);
 
@@ -28,6 +30,8 @@ const SafeHeroImage = ({ src, alt }) => {
 
 const NewVendorRegister = () => {
   const navigate = useNavigate();
+  // 2. GET LOGIN FUNCTION FROM CONTEXT
+  const { login } = useAuth(); 
   
   const [formData, setFormData] = useState({
     username: '',
@@ -43,7 +47,6 @@ const NewVendorRegister = () => {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
 
-  // --- PASSWORD VALIDATION STATE ---
   const [passwordCriteria, setPasswordCriteria] = useState({
     length: false,
     number: false,
@@ -52,7 +55,6 @@ const NewVendorRegister = () => {
   });
   const [passwordScore, setPasswordScore] = useState(0);
 
-  // Monitor password changes
   useEffect(() => {
     const pwd = formData.password;
     const criteria = {
@@ -87,7 +89,6 @@ const NewVendorRegister = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Block submission if password is weak
     if (passwordScore < 3) {
         setError("Please create a stronger password before continuing.");
         return;
@@ -121,8 +122,15 @@ const NewVendorRegister = () => {
         storefront_image_url: finalImageUrl
       };
 
-      await authService.register(registerPayload);
-      navigate('/vendor/dashboard');
+      // 3. CAPTURE RESPONSE AND LOG USER IN IMMEDIATELY
+      const response = await authService.register(registerPayload);
+      
+      if (response.token && response.user) {
+        login(response.token, response.user); // <--- This saves the user state
+        
+        // 4. NOW NAVIGATE (User is now logged in, so ProtectedRoute allows this)
+        navigate('/vendor/dashboard'); 
+      }
 
     } catch (err) {
       console.error(err);
@@ -132,7 +140,6 @@ const NewVendorRegister = () => {
     }
   };
 
-  // Helper for password strength color
   const getStrengthColor = () => {
     if (passwordScore <= 1) return 'bg-red-500';
     if (passwordScore === 2) return 'bg-orange-500';
@@ -175,9 +182,18 @@ const NewVendorRegister = () => {
 
         {/* Right Side (Form) */}
         <div className="p-8 sm:p-12">
-          <div className="mb-8">
+          <div className="mb-6">
             <h2 className="text-3xl font-bold text-gray-900">Create Vendor Account</h2>
             <p className="mt-2 text-gray-600">Start selling in your neighborhood today</p>
+          </div>
+
+          <div className="mb-6">
+            <GoogleLoginButton role="vendor" />
+            <div className="relative flex py-4 items-center">
+                <div className="flex-grow border-t border-gray-200"></div>
+                <span className="flex-shrink-0 mx-4 text-gray-400 text-xs font-medium tracking-wide">OR REGISTER WITH EMAIL</span>
+                <div className="flex-grow border-t border-gray-200"></div>
+            </div>
           </div>
 
           {error && (
@@ -210,7 +226,6 @@ const NewVendorRegister = () => {
                 <input name="phone_number" type="tel" required placeholder="M-Pesa Phone Number" className="w-full pl-10 pr-4 py-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all placeholder-gray-400" value={formData.phone_number} onChange={handleChange} />
               </div>
               
-              {/* --- PASSWORD FIELD WITH VALIDATION --- */}
               <div>
                 <div className="relative">
                     <Lock className="absolute left-3 top-3.5 h-5 w-5 text-orange-300" />
@@ -232,10 +247,8 @@ const NewVendorRegister = () => {
                     </button>
                 </div>
 
-                {/* Password Strength Meter - Only show if user has started typing */}
                 {formData.password.length > 0 && (
                     <div className="mt-3 animate-fadeIn">
-                        {/* Progress Bar */}
                         <div className="h-1.5 w-full bg-gray-200 rounded-full mb-3 overflow-hidden">
                             <div 
                                 className={`h-full transition-all duration-500 ease-out ${getStrengthColor()}`} 
@@ -243,7 +256,6 @@ const NewVendorRegister = () => {
                             ></div>
                         </div>
 
-                        {/* Criteria List */}
                         <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
                             <div className={`flex items-center gap-1.5 ${passwordCriteria.length ? 'text-green-600 font-medium' : ''}`}>
                                 {passwordCriteria.length ? <Check size={12} /> : <div className="w-3 h-3 rounded-full border border-gray-300" />}
@@ -265,7 +277,6 @@ const NewVendorRegister = () => {
                     </div>
                 )}
               </div>
-              {/* -------------------------------------- */}
               
               <div className="border-2 border-dashed border-orange-200 rounded-xl p-4 text-center hover:bg-orange-50 hover:border-orange-300 transition-all cursor-pointer relative group">
                 <input type="file" accept="image/*" onChange={handleImageChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />

@@ -10,17 +10,38 @@ const api = axios.create({
   },
 });
 
-// Add Token to requests
-api.interceptors.request.use((config) => {
-  const userStr = localStorage.getItem('user');
-  if (userStr) {
-    const user = JSON.parse(userStr);
-    if (user.token) {
-      config.headers.Authorization = `Bearer ${user.token}`;
+// --- ROBUST TOKEN INTERCEPTOR ---
+api.interceptors.request.use(
+  (config) => {
+    let token = null;
+
+    try {
+      // 1. Check for standalone token
+      token = localStorage.getItem('token');
+
+      // 2. If not found, check inside the 'user' object
+      if (!token) {
+        const userStr = localStorage.getItem('user');
+        if (userStr) {
+          const user = JSON.parse(userStr);
+          token = user.token || user.access_token;
+        }
+      }
+
+      // 3. Attach if found
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    } catch (error) {
+      console.error("Error retrieving token:", error);
     }
+
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
   }
-  return config;
-});
+);
 
 // --- 1. AUTH API ---
 export const authAPI = {
@@ -55,17 +76,10 @@ export const vendorAPI = {
 // --- 3. CUSTOMER API ---
 export const customerAPI = {
   searchVendors: (item, lat, lon) => api.get('/customer/search', { params: { item, lat, lon } }),
-  
-  // FIX: Added this function because landingPage.jsx looks for 'getVendors'
   getVendors: (lat, lon, radius = 5000) => api.get('/customer/vendors', { params: { lat, lon, radius } }),
-
-  // Keep this one too as mapService.js might use it
   getNearbyVendors: (lat, lon, radius = 5000) => api.get('/customer/vendors', { params: { lat, lon, radius } }),
-  
   getVendorDetails: (id) => api.get(`/customer/vendor/${id}`),
-  
   initiatePayment: (data) => api.post('/customer/pay', data),
-  
   checkPaymentStatus: (checkoutId) => api.get(`/customer/payment-status/${checkoutId}`)
 };
 

@@ -1,7 +1,9 @@
 from flask import Blueprint, request, jsonify
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from app.models import VendorLocation, MenuItem, User, Order, db
+# FIXED: Removed 'MenuItem' from imports
+from app.models import VendorLocation, User, Order, db
 from app.utils.cloudinary_service import upload_image
+from app.utils.ai_helper import generate_food_description
 from datetime import datetime, timedelta
 
 bp = Blueprint('vendor', __name__, url_prefix='/api/vendor')
@@ -37,6 +39,7 @@ def check_in():
     location.latitude = data.get('latitude')
     location.longitude = data.get('longitude')
     location.address = data.get('address')
+    # Save menu items directly as JSON list
     location.menu_items = data.get('menu_items', [])
     location.check_in() 
     
@@ -78,7 +81,7 @@ def get_status():
         'menu_items': location.menu_items or []
     }), 200
 
-# --- 4. GET ORDERS (NEW) ---
+# --- 4. GET ORDERS ---
 @bp.route('/orders', methods=['GET'])
 @jwt_required()
 def get_vendor_orders():
@@ -96,7 +99,6 @@ def get_vendor_orders():
             'created_at': order.created_at,
             'items': order.items,
             'delivery_location': order.delivery_location,
-            # Pass Coordinates for Mapping
             'customer_lat': order.customer_latitude,
             'customer_lon': order.customer_longitude,
             'mpesa_receipt_number': order.transaction.mpesa_receipt_number if order.transaction else None
@@ -117,3 +119,38 @@ def close_vendor():
         db.session.commit()
         
     return jsonify({'success': True}), 200
+
+# --- 6. UPDATE PROFILE ---
+@bp.route('/profile', methods=['PUT'])
+@jwt_required()
+def update_profile():
+    vendor_id = get_jwt_identity()
+    user = User.query.get(vendor_id)
+    
+    if not user:
+        return jsonify({'error': 'User not found'}), 404
+        
+    data = request.get_json()
+    
+    if 'business_name' in data:
+        user.business_name = data['business_name']
+    if 'phone_number' in data:
+        user.phone_number = data['phone_number']
+    if 'storefront_image_url' in data:
+        user.storefront_image_url = data['storefront_image_url']
+        
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'Profile updated'}), 200
+
+# --- 7. AI MENU DESCRIPTION ---
+@bp.route('/generate-description', methods=['POST'])
+@jwt_required()
+def generate_desc():
+    data = request.get_json()
+    item_name = data.get('item_name')
+    
+    if not item_name:
+        return jsonify({'error': 'Item name required'}), 400
+        
+    description = generate_food_description(item_name)
+    return jsonify({'success': True, 'description': description}), 200
