@@ -1,45 +1,84 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { User, Mail, Lock, Phone, Store, Upload, Loader2, AlertCircle, ArrowLeft, Eye, EyeOff, Check } from 'lucide-react';
+import {
+  User, Mail, Lock, Phone, Store, Upload, Loader2, AlertCircle, ArrowLeft,
+  Eye, EyeOff, Check, Radio, Wallet, MapPinned, X, ImageIcon,
+} from 'lucide-react';
 import { authService } from '../../services/authService';
 import { vendorAPI } from '../../services/api';
-// 1. IMPORT USEAUTH HOOK
-import { useAuth } from '../../context/AuthContext'; 
+import { useAuth } from '../../context/AuthContext';
 import GoogleLoginButton from '../../components/common/GoogleLoginButton';
 
-const SafeHeroImage = ({ src, alt }) => {
-  const [hasError, setHasError] = useState(false);
+/**
+ * Vendor sign-up.
+ *
+ * Two things shape the layout. The form is long - six fields plus an image - so
+ * it gets its own scroll column instead of pushing the submit button off a
+ * desktop viewport, which is what the old single centred card did. And the pitch
+ * panel sells the freshness timer, because "you are on the map for three hours
+ * from check-in" is the one thing a vendor needs to understand before signing up.
+ */
 
-  if (hasError || !src) {
-    return (
-      <div className="absolute inset-0 bg-gray-900 w-full h-full flex flex-col items-center justify-center text-gray-600 opacity-60">
-        <Store className="h-16 w-16 mb-2 opacity-20" />
-      </div>
-    );
-  }
+const SELLING_POINTS = [
+  { icon: Radio, title: 'Go live in seconds', body: 'Check in and you are on the map for three hours.' },
+  { icon: MapPinned, title: 'Customers nearby', body: 'Anyone within 5 km sees your stall and today’s menu.' },
+  { icon: Wallet, title: 'Paid on M-Pesa', body: 'Orders are paid before collection. No chasing cash.' },
+];
+
+/** Defined at module scope: a component declared inside the page would be a new
+ *  type on every render, remounting the input and losing focus per keystroke. */
+function Field({ icon, label, hint, children, ...props }) {
+  const IconTag = icon;
+  return (
+    <label className="block">
+      <span className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-text-lighter">
+        {label}
+      </span>
+      <span className="relative mt-1.5 block">
+        <IconTag size={15} className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-text-lighter" />
+        <input {...props} className="field w-full py-3 pl-10 pr-11 text-[14px] font-medium" />
+        {children}
+      </span>
+      {hint && <span className="mt-1 block text-[11px] text-text-lighter">{hint}</span>}
+    </label>
+  );
+}
+
+const HeroArt = () => {
+  const [failed, setFailed] = useState(false);
 
   return (
-    <img 
-      src={src} 
-      alt={alt} 
-      className="absolute inset-0 w-full h-full object-cover opacity-60" 
-      onError={() => setHasError(true)} 
-    />
+    <div className="absolute inset-0 overflow-hidden bg-text">
+      {!failed && (
+        <picture>
+          <source srcSet="/images/hero-lg.webp" type="image/webp" />
+          <img
+            src="/images/hero-lg.jpg"
+            alt=""
+            className="h-full w-full object-cover"
+            onError={() => setFailed(true)}
+          />
+        </picture>
+      )}
+      {/* Warm scrim rather than a flat opacity knock-back, so the photo keeps its
+          contrast and the text still clears WCAG on top of it. */}
+      <div className="absolute inset-0 bg-gradient-to-tr from-[#2D1509]/95 via-[#2D1509]/72 to-[#E55A2A]/45" />
+      <div className="absolute inset-0 bg-gradient-to-t from-[#2D1509]/85 via-transparent to-transparent" />
+    </div>
   );
 };
 
 const NewVendorRegister = () => {
   const navigate = useNavigate();
-  // 2. GET LOGIN FUNCTION FROM CONTEXT
-  const { login } = useAuth(); 
-  
+  const { login } = useAuth();
+
   const [formData, setFormData] = useState({
     username: '',
     email: '',
     password: '',
     phone_number: '',
     business_name: '',
-    storefront_image: null 
+    storefront_image: null,
   });
 
   const [imagePreview, setImagePreview] = useState(null);
@@ -48,10 +87,7 @@ const NewVendorRegister = () => {
   const [showPassword, setShowPassword] = useState(false);
 
   const [passwordCriteria, setPasswordCriteria] = useState({
-    length: false,
-    number: false,
-    special: false,
-    upper: false
+    length: false, number: false, special: false, upper: false,
   });
   const [passwordScore, setPasswordScore] = useState(0);
 
@@ -61,77 +97,77 @@ const NewVendorRegister = () => {
       length: pwd.length >= 8,
       number: /\d/.test(pwd),
       special: /[!@#$%^&*(),.?":{}|<>]/.test(pwd),
-      upper: /[A-Z]/.test(pwd)
+      upper: /[A-Z]/.test(pwd),
     };
-    
     setPasswordCriteria(criteria);
-    const score = Object.values(criteria).filter(Boolean).length;
-    setPasswordScore(score);
+    setPasswordScore(Object.values(criteria).filter(Boolean).length);
   }, [formData.password]);
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
+  // Revoke the object URL when it is replaced or the page unmounts; without this
+  // every re-pick leaks a blob for the life of the tab.
+  useEffect(() => () => { if (imagePreview) URL.revokeObjectURL(imagePreview); }, [imagePreview]);
+
+  const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
 
   const handleImageChange = (e) => {
     const file = e.target.files[0];
-    if (file) {
-      if (file.size > 5 * 1024 * 1024) {
-        setError("Image size too large (Max 5MB)");
-        return;
-      }
-      setFormData({ ...formData, storefront_image: file });
-      setImagePreview(URL.createObjectURL(file));
-      setError('');
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setError('That image is over 5MB — try a smaller one.');
+      return;
     }
+    setFormData({ ...formData, storefront_image: file });
+    setImagePreview(URL.createObjectURL(file));
+    setError('');
+  };
+
+  const clearImage = () => {
+    setFormData({ ...formData, storefront_image: null });
+    setImagePreview(null);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
+
     if (passwordScore < 3) {
-        setError("Please create a stronger password before continuing.");
-        return;
+      setError('Please create a stronger password before continuing.');
+      return;
     }
 
     setLoading(true);
     setError('');
 
     try {
-      let finalImageUrl = "";
-
-      // 1. Upload Image First
-      if (formData.storefront_image) {
-        try {
-          const uploadRes = await vendorAPI.uploadImage(formData.storefront_image);
-          finalImageUrl = uploadRes.url;
-        } catch (uploadError) {
-          console.error("Image upload failed", uploadError);
-          throw new Error("Failed to upload storefront image. Please try again.");
-        }
-      }
-
-      // 2. Register
-      const registerPayload = {
+      // 1. Register first. /vendor/upload requires a vendor token, so the image
+      //    cannot be uploaded before the account exists.
+      const response = await authService.register({
         username: formData.username,
         email: formData.email,
         password: formData.password,
         role: 'vendor',
         phone_number: formData.phone_number,
         business_name: formData.business_name,
-        storefront_image_url: finalImageUrl
-      };
+      });
 
-      // 3. CAPTURE RESPONSE AND LOG USER IN IMMEDIATELY
-      const response = await authService.register(registerPayload);
-      
       if (response.token && response.user) {
-        login(response.token, response.user); // <--- This saves the user state
-        
-        // 4. NOW NAVIGATE (User is now logged in, so ProtectedRoute allows this)
-        navigate('/vendor/dashboard'); 
-      }
+        // 2. Log in immediately so the api interceptor can attach the token.
+        login(response.token, response.user);
 
+        // 3. Now the upload is authenticated. A failure here must not undo a
+        //    successful signup - the vendor can set the image later from Settings.
+        if (formData.storefront_image) {
+          try {
+            const uploadRes = await vendorAPI.uploadImage(formData.storefront_image);
+            if (uploadRes.url) {
+              await vendorAPI.updateProfile({ storefront_image_url: uploadRes.url });
+            }
+          } catch (uploadError) {
+            console.error('Storefront image upload failed; account was still created', uploadError);
+          }
+        }
+
+        navigate('/vendor/dashboard');
+      }
     } catch (err) {
       console.error(err);
       setError(err.response?.data?.error || err.message || 'Registration failed');
@@ -140,167 +176,315 @@ const NewVendorRegister = () => {
     }
   };
 
-  const getStrengthColor = () => {
-    if (passwordScore <= 1) return 'bg-red-500';
-    if (passwordScore === 2) return 'bg-orange-500';
-    if (passwordScore === 3) return 'bg-yellow-500';
-    return 'bg-green-500';
-  };
+  const strength = [
+    { label: 'Too weak', bar: 'bg-warning', text: 'text-warning-dark' },
+    { label: 'Too weak', bar: 'bg-warning', text: 'text-warning-dark' },
+    { label: 'Getting there', bar: 'bg-secondary-dark', text: 'text-secondary-dark' },
+    { label: 'Good', bar: 'bg-success', text: 'text-success-dark' },
+    { label: 'Strong', bar: 'bg-success', text: 'text-success-dark' },
+  ][passwordScore];
+
+  const rules = [
+    ['length', '8+ characters'],
+    ['upper', '1 uppercase letter'],
+    ['number', '1 number'],
+    ['special', '1 special character'],
+  ];
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 via-white to-orange-50 py-12 px-4 sm:px-6 lg:px-8 relative">
-      
-      {/* Back to Home Button */}
-      <div className="absolute top-6 left-6 z-20">
-        <Link 
-          to="/" 
-          className="flex items-center gap-2 text-gray-500 hover:text-orange-600 transition-colors font-medium bg-white px-4 py-2 rounded-full shadow-sm hover:shadow-orange-100 border border-orange-100"
-        >
-           <ArrowLeft className="h-4 w-4" /> Back to Home
-        </Link>
-      </div>
+    <div className="min-h-[100dvh] lg:grid lg:grid-cols-[1fr_1.02fr] xl:grid-cols-[1fr_0.92fr]">
 
-      <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 bg-white rounded-3xl shadow-2xl shadow-orange-100/50 border border-orange-100 overflow-hidden relative z-10">
-        
-        {/* Left Side (Hero) */}
-        <div className="hidden md:block relative bg-gray-900">
-          <SafeHeroImage src="/images/hero2.jpg" alt="Vendor Registration" />
-          
-          <div className="relative z-10 p-12 h-full flex flex-col justify-between text-white">
-            <div>
-              <h2 className="text-4xl font-bold mb-4">Partner with us</h2>
-              <p className="text-lg text-gray-200">Join thousands of local vendors growing their business with HyperLocal.</p>
-            </div>
-            <div className="space-y-4">
-              <div className="flex items-center gap-3">
-                <div className="p-2 bg-orange-600 rounded-lg shadow-lg shadow-orange-900/50"><Store className="h-6 w-6" /></div>
-                <div><p className="font-bold">Reach More Customers</p><p className="text-sm text-gray-300">Expand your delivery radius instantly</p></div>
-              </div>
-            </div>
-          </div>
+      {/* ---------- pitch ---------- */}
+      <aside className="relative hidden overflow-hidden lg:flex lg:h-[100dvh] lg:flex-col lg:justify-between lg:p-12 xl:p-14">
+        <HeroArt />
+
+        <div className="relative z-10">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-2 text-[12.5px] font-bold text-white/90 backdrop-blur-md transition-colors hover:bg-white/20 hover:text-white"
+          >
+            <ArrowLeft size={14} /> Back to home
+          </Link>
         </div>
 
-        {/* Right Side (Form) */}
-        <div className="p-8 sm:p-12">
-          <div className="mb-6">
-            <h2 className="text-3xl font-bold text-gray-900">Create Vendor Account</h2>
-            <p className="mt-2 text-gray-600">Start selling in your neighborhood today</p>
-          </div>
+        <div className="relative z-10 stagger">
+          <span className="chip-live inline-flex items-center gap-1.5 border-white/30 bg-white/15 px-3 py-1 text-[9.5px] text-white backdrop-blur-md">
+            <span className="h-1.5 w-1.5 rounded-full bg-success animate-breathe" />
+            Free to join
+          </span>
 
-          <div className="mb-6">
+          <h1 className="mt-4 max-w-[13ch] font-display text-[2.6rem] font-bold leading-[1.03] text-white xl:text-[3.1rem]">
+            Sell where your customers already are.
+          </h1>
+
+          <p className="mt-4 max-w-[38ch] text-[15px] leading-relaxed text-white/80">
+            HyperLocal puts your stall on the map the moment you open, and takes
+            you off it when you close. No storefront, no rent, no commission on
+            your first orders.
+          </p>
+
+          <ul className="mt-9 space-y-5 border-t border-white/15 pt-8">
+            {SELLING_POINTS.map((point) => {
+              const PointIcon = point.icon;
+              return (
+                <li key={point.title} className="flex items-start gap-3.5">
+                  <span className="mt-0.5 grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-primary/90 text-white shadow-lg shadow-black/25">
+                    <PointIcon size={17} />
+                  </span>
+                  <span>
+                    <span className="block text-[13.5px] font-bold text-white">{point.title}</span>
+                    <span className="block text-[12.5px] leading-snug text-white/70">{point.body}</span>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      </aside>
+
+      {/* ---------- form ---------- */}
+      <main className="flex min-h-[100dvh] flex-col lg:h-[100dvh] lg:overflow-y-auto">
+        <div className="mx-auto flex w-full max-w-[28rem] flex-1 flex-col px-5 py-8 sm:px-8 lg:px-10 lg:py-12">
+
+          <Link
+            to="/"
+            className="btn-ghost mb-7 inline-flex w-fit items-center gap-1.5 px-3.5 py-2 text-[12.5px] lg:hidden"
+          >
+            <ArrowLeft size={14} /> Back to home
+          </Link>
+
+          <header>
+            <span className="flex h-11 w-11 items-center justify-center rounded-2xl bg-primary text-white shadow-lg shadow-primary/30">
+              <Store size={20} />
+            </span>
+            <h2 className="mt-4 font-display text-[1.75rem] font-bold leading-tight text-text sm:text-[2rem]">
+              Create your vendor account
+            </h2>
+            <p className="mt-1.5 text-[13.5px] text-text-light">
+              Takes about a minute. You can check in and start selling straight after.
+            </p>
+          </header>
+
+          {/* The pitch panel is desktop-only, but most Kenyan vendors sign up on a
+              phone - so the same three points get a compact strip here. */}
+          <ul className="mt-5 flex gap-2 lg:hidden">
+            {SELLING_POINTS.map((point) => {
+              const PointIcon = point.icon;
+              return (
+                <li key={point.title} className="panel flex flex-1 flex-col items-center gap-1.5 px-2 py-3 text-center">
+                  <PointIcon size={16} className="text-primary" />
+                  <span className="text-[10.5px] font-bold leading-tight text-text-light">
+                    {point.title}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+
+          <div className="mt-6">
             <GoogleLoginButton role="vendor" />
-            <div className="relative flex py-4 items-center">
-                <div className="flex-grow border-t border-gray-200"></div>
-                <span className="flex-shrink-0 mx-4 text-gray-400 text-xs font-medium tracking-wide">OR REGISTER WITH EMAIL</span>
-                <div className="flex-grow border-t border-gray-200"></div>
+            <div className="mt-5 flex items-center gap-3">
+              <span className="rule flex-1" />
+              <span className="text-[10px] font-extrabold uppercase tracking-[0.14em] text-text-lighter">
+                or use email
+              </span>
+              <span className="rule flex-1" />
             </div>
           </div>
 
           {error && (
-            <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 flex items-center gap-3 rounded-r-lg animate-fadeIn">
-              <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
-              <p className="text-sm text-red-700">{error}</p>
+            <div
+              role="alert"
+              className="mt-5 flex items-start gap-2.5 rounded-xl border border-warning/35 bg-warning/8 p-3.5 animate-fade-in"
+            >
+              <AlertCircle size={16} className="mt-px shrink-0 text-warning-dark" />
+              <p className="text-[13px] font-semibold text-warning-dark">{error}</p>
             </div>
           )}
 
-          <form className="space-y-5" onSubmit={handleSubmit}>
-            <div className="grid grid-cols-1 gap-5">
-              
-              <div className="relative">
-                <User className="absolute left-3 top-3.5 h-5 w-5 text-orange-300" />
-                <input name="username" type="text" required placeholder="Full Name" className="w-full pl-10 pr-4 py-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all placeholder-gray-400" value={formData.username} onChange={handleChange} />
-              </div>
-              
-              <div className="relative">
-                <Store className="absolute left-3 top-3.5 h-5 w-5 text-orange-300" />
-                <input name="business_name" type="text" required placeholder="Business Name" className="w-full pl-10 pr-4 py-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all placeholder-gray-400" value={formData.business_name} onChange={handleChange} />
-              </div>
-              
-              <div className="relative">
-                <Mail className="absolute left-3 top-3.5 h-5 w-5 text-orange-300" />
-                <input name="email" type="email" required placeholder="Email Address" className="w-full pl-10 pr-4 py-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all placeholder-gray-400" value={formData.email} onChange={handleChange} />
-              </div>
-              
-              <div className="relative">
-                <Phone className="absolute left-3 top-3.5 h-5 w-5 text-orange-300" />
-                <input name="phone_number" type="tel" required placeholder="M-Pesa Phone Number" className="w-full pl-10 pr-4 py-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all placeholder-gray-400" value={formData.phone_number} onChange={handleChange} />
-              </div>
-              
+          <form className="mt-6 space-y-6" onSubmit={handleSubmit}>
+
+            {/* --- the stall --- */}
+            <section className="panel space-y-4 p-5">
+              <h3 className="font-display text-[13px] font-bold text-text">Your stall</h3>
+
+              <Field
+                icon={Store}
+                label="Business name"
+                hint="This is the name customers see on the map."
+                name="business_name"
+                type="text"
+                required
+                autoComplete="organization"
+                placeholder="e.g. Mama Njeri Kibandaski"
+                value={formData.business_name}
+                onChange={handleChange}
+              />
+
               <div>
-                <div className="relative">
-                    <Lock className="absolute left-3 top-3.5 h-5 w-5 text-orange-300" />
-                    <input 
-                    name="password" 
-                    type={showPassword ? "text" : "password"} 
-                    required 
-                    placeholder="Create Password" 
-                    className="w-full pl-10 pr-12 py-3 border border-orange-200 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none transition-all placeholder-gray-400" 
-                    value={formData.password} 
-                    onChange={handleChange} 
-                    />
-                    <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-3.5 text-gray-400 hover:text-orange-500 focus:outline-none transition-colors"
-                    >
-                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
-                    </button>
-                </div>
+                <span className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-text-lighter">
+                  Storefront photo <span className="normal-case tracking-normal text-text-lighter/70">— optional</span>
+                </span>
 
-                {formData.password.length > 0 && (
-                    <div className="mt-3 animate-fadeIn">
-                        <div className="h-1.5 w-full bg-gray-200 rounded-full mb-3 overflow-hidden">
-                            <div 
-                                className={`h-full transition-all duration-500 ease-out ${getStrengthColor()}`} 
-                                style={{ width: `${(passwordScore / 4) * 100}%` }}
-                            ></div>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
-                            <div className={`flex items-center gap-1.5 ${passwordCriteria.length ? 'text-green-600 font-medium' : ''}`}>
-                                {passwordCriteria.length ? <Check size={12} /> : <div className="w-3 h-3 rounded-full border border-gray-300" />}
-                                8+ Characters
-                            </div>
-                            <div className={`flex items-center gap-1.5 ${passwordCriteria.number ? 'text-green-600 font-medium' : ''}`}>
-                                {passwordCriteria.number ? <Check size={12} /> : <div className="w-3 h-3 rounded-full border border-gray-300" />}
-                                At least 1 number
-                            </div>
-                            <div className={`flex items-center gap-1.5 ${passwordCriteria.upper ? 'text-green-600 font-medium' : ''}`}>
-                                {passwordCriteria.upper ? <Check size={12} /> : <div className="w-3 h-3 rounded-full border border-gray-300" />}
-                                1 Uppercase Letter
-                            </div>
-                            <div className={`flex items-center gap-1.5 ${passwordCriteria.special ? 'text-green-600 font-medium' : ''}`}>
-                                {passwordCriteria.special ? <Check size={12} /> : <div className="w-3 h-3 rounded-full border border-gray-300" />}
-                                1 Special Char
-                            </div>
-                        </div>
-                    </div>
-                )}
-              </div>
-              
-              <div className="border-2 border-dashed border-orange-200 rounded-xl p-4 text-center hover:bg-orange-50 hover:border-orange-300 transition-all cursor-pointer relative group">
-                <input type="file" accept="image/*" onChange={handleImageChange} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
                 {imagePreview ? (
-                  <img src={imagePreview} alt="Preview" className="h-32 w-full object-cover rounded-lg shadow-sm" />
+                  <div className="relative mt-1.5 overflow-hidden rounded-xl border border-text/10">
+                    <img src={imagePreview} alt="Your storefront" className="h-36 w-full object-cover" />
+                    <button
+                      type="button"
+                      onClick={clearImage}
+                      aria-label="Remove photo"
+                      className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-text/70 text-white backdrop-blur-sm transition-colors hover:bg-warning"
+                    >
+                      <X size={14} />
+                    </button>
+                  </div>
                 ) : (
-                  <div className="py-4">
-                    <div className="bg-orange-50 w-12 h-12 rounded-full flex items-center justify-center mx-auto mb-2 text-orange-500 group-hover:scale-110 transition-transform"><Upload className="h-6 w-6" /></div>
-                    <p className="text-sm font-medium text-gray-900">Upload Storefront Image</p>
+                  <div className="group relative mt-1.5 cursor-pointer rounded-xl border-2 border-dashed border-primary/25 bg-primary/4 px-4 py-6 text-center transition-colors hover:border-primary/50 hover:bg-primary/8">
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={handleImageChange}
+                      aria-label="Upload storefront photo"
+                      className="absolute inset-0 h-full w-full cursor-pointer opacity-0"
+                    />
+                    <span className="mx-auto grid h-10 w-10 place-items-center rounded-full bg-primary/12 text-primary transition-transform group-hover:scale-110">
+                      <Upload size={18} />
+                    </span>
+                    <p className="mt-2 text-[13px] font-bold text-text">Add a photo of your stall</p>
+                    <p className="mt-0.5 flex items-center justify-center gap-1 text-[11.5px] text-text-lighter">
+                      <ImageIcon size={11} /> JPG or PNG, up to 5MB
+                    </p>
                   </div>
                 )}
               </div>
-            </div>
+            </section>
 
-            <button type="submit" disabled={loading} className="w-full bg-gray-900 text-white py-4 rounded-xl font-bold text-lg hover:bg-orange-600 transition-all shadow-lg shadow-orange-200 flex items-center justify-center gap-2 transform active:scale-95">
-              {loading ? <><Loader2 className="animate-spin h-5 w-5" /> Creating Account...</> : 'Register Business'}
+            {/* --- the person --- */}
+            <section className="panel space-y-4 p-5">
+              <h3 className="font-display text-[13px] font-bold text-text">Your account</h3>
+
+              <Field
+                icon={User}
+                label="Your name"
+                name="username"
+                type="text"
+                required
+                autoComplete="name"
+                placeholder="Njeri Kamau"
+                value={formData.username}
+                onChange={handleChange}
+              />
+
+              <Field
+                icon={Mail}
+                label="Email"
+                name="email"
+                type="email"
+                required
+                autoComplete="email"
+                placeholder="you@example.com"
+                value={formData.email}
+                onChange={handleChange}
+              />
+
+              <Field
+                icon={Phone}
+                label="M-Pesa number"
+                hint="Where your payments land. Include the country code."
+                name="phone_number"
+                type="tel"
+                required
+                inputMode="tel"
+                autoComplete="tel"
+                placeholder="+2547XXXXXXXX"
+                value={formData.phone_number}
+                onChange={handleChange}
+              />
+
+              <div>
+                <Field
+                  icon={Lock}
+                  label="Password"
+                  name="password"
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  autoComplete="new-password"
+                  placeholder="Create a password"
+                  value={formData.password}
+                  onChange={handleChange}
+                >
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((v) => !v)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-text-lighter transition-colors hover:text-primary"
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </Field>
+
+                {formData.password.length > 0 && (
+                  <div className="mt-3 animate-fade-in">
+                    <div className="flex items-center gap-2.5">
+                      <div className="flex flex-1 gap-1">
+                        {[0, 1, 2, 3].map((i) => (
+                          <span
+                            key={i}
+                            className={`h-1.5 flex-1 rounded-full transition-colors duration-300 ${
+                              i < passwordScore ? strength.bar : 'bg-neutral'
+                            }`}
+                          />
+                        ))}
+                      </div>
+                      <span className={`text-[11px] font-extrabold ${strength.text}`}>
+                        {strength.label}
+                      </span>
+                    </div>
+
+                    <ul className="mt-2.5 grid grid-cols-2 gap-x-3 gap-y-1.5">
+                      {rules.map(([key, text]) => (
+                        <li
+                          key={key}
+                          className={`flex items-center gap-1.5 text-[11.5px] transition-colors ${
+                            passwordCriteria[key] ? 'font-bold text-success-dark' : 'text-text-lighter'
+                          }`}
+                        >
+                          {passwordCriteria[key]
+                            ? <Check size={12} className="shrink-0" />
+                            : <span className="h-2.5 w-2.5 shrink-0 rounded-full border border-neutral-dark" />}
+                          {text}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            </section>
+
+            <button
+              type="submit"
+              disabled={loading}
+              className="btn-ember flex w-full items-center justify-center gap-2 py-3.5 text-[15px] disabled:opacity-60"
+            >
+              {loading
+                ? <><Loader2 size={17} className="animate-spin" /> Creating your account…</>
+                : 'Create vendor account'}
             </button>
+
+            <p className="text-center text-[11.5px] leading-relaxed text-text-lighter">
+              By registering you agree to keep your check-ins accurate — customers
+              are routed to wherever you last checked in.
+            </p>
           </form>
-          
-          <p className="mt-8 text-center text-gray-600">
-            Already have an account? <Link to="/vendor/login" className="text-orange-600 font-bold hover:underline">Log in here</Link>
+
+          <p className="mt-8 border-t border-text/8 pt-6 text-center text-[13.5px] text-text-light">
+            Already selling with us?{' '}
+            <Link to="/vendor/login" className="font-bold text-primary hover:underline">
+              Log in
+            </Link>
           </p>
         </div>
-      </div>
+      </main>
     </div>
   );
 };

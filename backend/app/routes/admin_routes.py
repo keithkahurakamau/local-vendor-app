@@ -90,7 +90,7 @@ def get_transaction_logs():
                 vendor_name = t.vendor.business_name if t.vendor.business_name else t.vendor.username
 
             # 4. Format Date (ISO format is best for React tables to sort/display)
-            real_date = t.transaction_date if t.transaction_date else t.created_at
+            real_date = t.transaction_date  # Transaction has no created_at column
             formatted_date = real_date.isoformat() if real_date else datetime.utcnow().isoformat()
 
             # 5. NEW: Order ID Logic

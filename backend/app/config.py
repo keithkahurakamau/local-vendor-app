@@ -34,6 +34,20 @@ class Config:
     # --- MVP 2: AI SETTINGS ---
     OPENAI_API_KEY = os.getenv('OPENAI_API_KEY')
 
+    # --- CORS ---
+    # Browser origins allowed to call the API. Credentials are enabled, so this must
+    # never contain '*' - the wildcard cannot be combined with credentialed requests
+    # and silently widens access to every site the user visits. The M-Pesa callback is
+    # server-to-server and is not subject to CORS, so it needs no entry here.
+    FRONTEND_URL = os.getenv('FRONTEND_URL')
+    CORS_ORIGINS = [
+        origin for origin in [
+            'http://localhost:5173',
+            'http://127.0.0.1:5173',
+            os.getenv('FRONTEND_URL'),
+        ] if origin
+    ]
+
 class DevelopmentConfig(Config):
     DEBUG = True
     SQLALCHEMY_ECHO = True
@@ -42,8 +56,28 @@ class ProductionConfig(Config):
     DEBUG = False
     SQLALCHEMY_ECHO = False
 
+class TestingConfig(Config):
+    """
+    Isolated config for the test suite.
+
+    The database URI MUST be set here rather than patched onto app.config after
+    create_app(): Flask-SQLAlchemy binds the engine during init_app(), so a later
+    assignment is ignored and the tests would run (and drop_all) against the real
+    DATABASE_URL from .env.
+    """
+    TESTING = True
+    DEBUG = False
+    SQLALCHEMY_ECHO = False
+    SQLALCHEMY_DATABASE_URI = 'sqlite:///:memory:'
+    SECRET_KEY = 'test-secret-key'
+    JWT_SECRET_KEY = 'test-jwt-secret-key'
+    # Never send real mail or hit real payment/AI providers from tests
+    MAIL_SUPPRESS_SEND = True
+    OPENAI_API_KEY = None
+
 config = {
     'development': DevelopmentConfig,
     'production': ProductionConfig,
+    'testing': TestingConfig,
     'default': DevelopmentConfig
 }

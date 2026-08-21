@@ -5,6 +5,7 @@ import { MapContainer, TileLayer, Marker, Popup, Polyline, useMap } from 'react-
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { vendorAPI } from '../../services/api';
+import { originIcon, destinationIcon } from '../../components/map/markers';
 
 // Fix Leaflet Icons
 import iconMarker from 'leaflet/dist/images/marker-icon.png';
@@ -46,7 +47,32 @@ const ViewOrders = () => {
   const [mapLoading, setMapLoading] = useState(false);
 
   // Vendor Location (Default to Nairobi CBD)
-  const [vendorLocation, setVendorLocation] = useState({ lat: -1.2921, lng: 36.8219 }); 
+  const [vendorLocation, setVendorLocation] = useState({ lat: -1.2921, lng: 36.8219 });
+  const [updatingId, setUpdatingId] = useState(null);
+  const [statusError, setStatusError] = useState('');
+
+  // The server owns the state machine; it returns `allowed` on a 409 so the UI never
+  // has to duplicate the transition rules.
+  const NEXT_STEP = { Paid: 'Preparing', Preparing: 'Ready', Ready: 'Collected' };
+
+  const advanceStatus = async (order, e) => {
+    e.stopPropagation();                       // don't open the map modal
+    const target = NEXT_STEP[order.status];
+    if (!target) return;
+
+    setUpdatingId(order.id);
+    setStatusError('');
+    try {
+      const res = await vendorAPI.updateOrderStatus(order.id, target);
+      const updated = res.data.order;
+      setOrders((prev) => prev.map((o) => (o.id === order.id ? { ...o, status: updated.status } : o)));
+    } catch (err) {
+      setStatusError(err.response?.data?.error || 'Could not update that order.');
+    } finally {
+      setUpdatingId(null);
+    }
+  };
+
 
   useEffect(() => {
     fetchOrders();
@@ -73,7 +99,7 @@ const ViewOrders = () => {
 
   const handleOrderClick = async (order) => {
     // 1. Check Payment Status
-    const isPaid = ['paid', 'completed', 'successful'].includes(order.status?.toLowerCase());
+    const isPaid = ['paid', 'completed', 'successful', 'preparing', 'ready', 'collected'].includes(order.status?.toLowerCase());
     
     if (!isPaid) {
       alert("Payment not successful. Location details are hidden.");
@@ -180,8 +206,13 @@ const ViewOrders = () => {
           </div>
         ) : (
           <div className="grid gap-4">
+            {statusError && (
+              <div className="mb-2 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-600">
+                <X size={14} /> {statusError}
+              </div>
+            )}
             {filteredOrders.map((order) => {
-              const isPaid = ['paid', 'successful', 'completed'].includes(order.status?.toLowerCase());
+              const isPaid = ['paid', 'successful', 'completed', 'preparing', 'ready', 'collected'].includes(order.status?.toLowerCase());
               
               return (
                 <div 
@@ -218,9 +249,22 @@ const ViewOrders = () => {
                         </div>
                       </div>
                     </div>
-                    <div className="text-right">
-                      <div className="text-2xl font-bold text-gray-900">KES {order.amount}</div>
-                      <div className="text-xs text-gray-400 font-medium">{new Date(order.created_at).toLocaleString()}</div>
+                    <div className="flex w-full items-center justify-between gap-3 md:w-auto md:flex-col md:items-end">
+                      <div className="text-right">
+                        <div className="text-2xl font-bold text-gray-900">KES {order.amount}</div>
+                        <div className="text-xs text-gray-400 font-medium">{new Date(order.created_at).toLocaleString()}</div>
+                      </div>
+                      {NEXT_STEP[order.status] && (
+                        <button
+                          onClick={(e) => advanceStatus(order, e)}
+                          disabled={updatingId === order.id}
+                          className="btn-ember shrink-0 whitespace-nowrap px-4 py-2 text-xs disabled:opacity-60"
+                        >
+                          {updatingId === order.id
+                            ? 'Saving...'
+                            : `Mark ${NEXT_STEP[order.status]}`}
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -261,30 +305,44 @@ const ViewOrders = () => {
               
               <MapContainer center={[vendorLocation.lat, vendorLocation.lng]} zoom={13} style={{ height: "100%", width: "100%" }}>
                 <TileLayer
-                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  attribution='© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+                  url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                  attribution="&copy; OpenStreetMap &copy; CARTO"
                 />
                 
                 {/* Vendor Marker (Start) */}
-                <Marker position={[vendorLocation.lat, vendorLocation.lng]}>
-                  <Popup><strong>You (Vendor)</strong><br/>Start Point</Popup>
+                <Marker position={[vendorLocation.lat, vendorLocation.lng]} icon={originIcon()}>
+                  <Popup>
+                    <div className="panel px-3.5 py-2.5" style={{ minWidth: 150 }}>
+                      <p className="font-display text-[13px] font-bold text-text">Your stall</p>
+                      <p className="mt-0.5 text-[11px] text-text-lighter">Route starts here</p>
+                    </div>
+                  </Popup>
                 </Marker>
 
                 {/* Customer Marker (End) */}
-                <Marker position={[selectedOrder.customer_lat, selectedOrder.customer_lon]}>
+                <Marker position={[selectedOrder.customer_lat, selectedOrder.customer_lon]} icon={destinationIcon()}>
                   <Popup>
-                    <strong>Customer</strong><br/>
-                    {selectedOrder.delivery_location || "Marked Location"}<br/>
-                    <a href={`https://www.google.com/maps/search/?api=1&query=${selectedOrder.customer_lat},${selectedOrder.customer_lon}`} target="_blank" rel="noreferrer" className="text-orange-600 underline text-xs font-bold">
-                      Open in Google Maps
-                    </a>
+                    <div className="panel px-3.5 py-2.5" style={{ minWidth: 178 }}>
+                      <p className="font-display text-[13px] font-bold text-text">Drop-off</p>
+                      <p className="mt-0.5 text-[11.5px] leading-snug text-text-light">
+                        {selectedOrder.delivery_location || 'Pinned location'}
+                      </p>
+                      <a
+                        href={`https://www.google.com/maps/dir/?api=1&destination=${selectedOrder.customer_lat},${selectedOrder.customer_lon}`}
+                        target="_blank" rel="noreferrer"
+                        className="mt-2 inline-flex items-center gap-1 text-[11px] font-bold text-primary hover:underline"
+                      >
+                        <Navigation size={11} /> Navigate there
+                      </a>
+                    </div>
                   </Popup>
                 </Marker>
 
                 {/* The Route Line */}
                 {routeCoords.length > 0 && (
                   <>
-                    <Polyline positions={routeCoords} color="#ea580c" weight={6} opacity={0.8} />
+                    <Polyline positions={routeCoords} color="#FFFFFF" weight={10} opacity={0.85} />
+                    <Polyline positions={routeCoords} color="#FF6B35" weight={5} opacity={0.95} />
                     <FitBounds routeCoordinates={routeCoords} />
                   </>
                 )}

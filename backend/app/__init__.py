@@ -15,9 +15,9 @@ def create_app(config_name='development'):
     
     # Enable CORS for frontend communication
     cors.init_app(app, resources={r"/*": {
-        "origins": ["http://localhost:5173", "http://127.0.0.1:5173", "*"],
+        "origins": app.config['CORS_ORIGINS'],
         "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-        "allow_headers": ["Content-Type", "Authorization", "Access-Control-Allow-Origin"],
+        "allow_headers": ["Content-Type", "Authorization"],
         "supports_credentials": True,
         "send_wildcard": False
     }})

@@ -13,6 +13,7 @@ import CustomerProfile from './pages/customer/CustomerProfile';
 import CustomerLogin from './pages/customer/CustomerLogin';
 import CustomerRegister from './pages/customer/CustomerRegister';
 import ForgotPassword from './pages/auth/ForgotPassword';
+import ResetPassword from './pages/auth/ResetPassword';
 
 import VendorLogin from './pages/vendor/VendorLogin';
 import NewVendorRegister from './pages/vendor/newVendorRegister';
@@ -54,6 +55,7 @@ function App() {
       <Route path="/login" element={<CustomerLogin />} />
       <Route path="/register" element={<CustomerRegister />} />
       <Route path="/forgot-password" element={<ForgotPassword />} />
+      <Route path="/reset-password/:token" element={<ResetPassword />} />
 
       {/* Vendor Auth: Keep Wrapper (Vendors shouldn't see these if logged in) */}
       <Route 

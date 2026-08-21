@@ -1,3 +1,4 @@
+from flask import current_app
 from flask_mail import Message
 from app.extensions import mail, db
 import secrets
@@ -14,8 +15,9 @@ def send_reset_email(user):
         db.session.commit()
         
         # 3. Create Email Link (Points to Frontend)
-        # Ensure this matches your frontend port (usually 5173 for Vite)
-        reset_link = f"http://localhost:5173/reset-password/{token}"
+        # Driven by FRONTEND_URL so reset mails are not hardcoded to a dev machine.
+        frontend_url = (current_app.config.get('FRONTEND_URL') or 'http://localhost:5173').rstrip('/')
+        reset_link = f"{frontend_url}/reset-password/{token}"
         
         msg = Message(
             subject="Password Reset Request - HyperLocal",

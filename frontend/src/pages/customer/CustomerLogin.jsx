@@ -66,7 +66,7 @@ const CustomerLogin = () => {
              {from ? "Please login to complete your order." : "Hungry? Let's get you signed in."}
           </p>
         </div>
-        <GoogleLoginButton role="customer" from={from} />
+        <GoogleLoginButton role="customer" from={from} oneTap />
         <div className="relative flex py-4 items-center">
             <div className="flex-grow border-t border-gray-100"></div>
             <span className="flex-shrink-0 mx-4 text-gray-400 text-xs font-medium tracking-wide">OR LOGIN WITH EMAIL</span>

@@ -1,145 +1,210 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+  ArrowLeft, Image as ImageIcon, Loader2, Tag, Plus, Trash2, Power, AlertCircle, Check, Store,
+} from 'lucide-react';
+import AccountPanel from '../../components/account/AccountPanel';
+import { vendorAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
-import { vendorAPI } from '../../services/api'; // Ensure you have an update endpoint or use api.put
-import { Store, Phone, User, Lock, Save, Star, Hash } from 'lucide-react';
-import api from '../../services/api';
 
-const VendorProfile = () => {
-  const { user, login } = useAuth(); // We need login to update the local user state after saving
-  const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState({ type: '', text: '' });
+/** Storefront photo — uploaded through the backend, then attached to the profile. */
+function StorefrontImage() {
+  const { user } = useAuth();
+  const [preview, setPreview] = useState(user?.image || null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState(null);
 
-  const [formData, setFormData] = useState({
-    business_name: user?.business_name || '',
-    username: user?.username || '',
-    phone_number: user?.phone_number || '',
-    password: '' // Only if changing
-  });
+  const pick = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      setNote({ kind: 'err', text: 'Image must be under 5MB.' });
+      return;
+    }
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setMessage({ type: '', text: '' });
-
+    setBusy(true);
+    setNote(null);
+    const localPreview = URL.createObjectURL(file);
+    setPreview(localPreview);
     try {
-      // Assuming PUT /api/vendor/profile exists from earlier steps
-      const res = await api.put('/vendor/profile', formData);
-      
-      // Update local auth state with new details
-      // Note: Backend should return the updated user object
-      // For now we assume res.data.user
-      if(res.data.success) {
-          setMessage({ type: 'success', text: 'Profile updated successfully!' });
-      }
-    } catch (err) {
-      setMessage({ type: 'error', text: 'Failed to update profile.' });
+      const uploaded = await vendorAPI.uploadImage(file);
+      if (!uploaded.url) throw new Error('no url');
+      await vendorAPI.updateProfile({ storefront_image_url: uploaded.url });
+      setPreview(uploaded.url);
+      setNote({ kind: 'ok', text: 'Storefront photo updated.' });
+    } catch {
+      setPreview(user?.image || null);
+      setNote({ kind: 'err', text: 'Upload failed. Try a smaller image.' });
     } finally {
-      setLoading(false);
+      setBusy(false);
+      URL.revokeObjectURL(localPreview);
     }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-6 lg:p-12">
-      <div className="max-w-3xl mx-auto bg-white rounded-3xl shadow-xl border border-gray-100 overflow-hidden">
-        
-        {/* Header */}
-        <div className="bg-gray-900 text-white p-8 relative overflow-hidden">
-            <div className="absolute top-0 right-0 w-64 h-64 bg-orange-500 rounded-full opacity-10 blur-3xl -mr-16 -mt-16"></div>
-            <h1 className="text-3xl font-bold relative z-10">Vendor Settings</h1>
-            <p className="text-gray-400 relative z-10">Manage your business details</p>
+    <div className="panel p-5">
+      <h2 className="font-display text-[15px] font-bold text-text">Storefront photo</h2>
+      <p className="mt-0.5 text-[12px] text-text-lighter">Shown on your card and map pin.</p>
+
+      <div className="mt-4 flex items-center gap-4">
+        <div className="h-20 w-20 shrink-0 overflow-hidden rounded-xl border border-primary/15 bg-primary/8">
+          {preview
+            ? <img src={preview} alt="" className="h-full w-full object-cover" />
+            : <div className="flex h-full items-center justify-center"><Store size={22} className="text-primary/40" /></div>}
         </div>
-
-        <div className="p-8">
-            {/* Read Only Stats */}
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-8">
-                <div className="bg-orange-50 p-4 rounded-xl border border-orange-100">
-                    <div className="flex items-center gap-2 text-orange-800 font-bold mb-1">
-                        <Hash size={16} /> Vendor ID
-                    </div>
-                    <p className="text-2xl font-black text-gray-900">{user?.id}</p>
-                </div>
-                <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-100">
-                    <div className="flex items-center gap-2 text-yellow-700 font-bold mb-1">
-                        <Star size={16} /> Rating
-                    </div>
-                    <p className="text-2xl font-black text-gray-900">4.8 <span className="text-sm text-gray-400 font-normal">/ 5.0</span></p>
-                </div>
-            </div>
-
-            <form onSubmit={handleSubmit} className="space-y-6">
-                {message.text && (
-                    <div className={`p-4 rounded-xl ${message.type === 'success' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                        {message.text}
-                    </div>
-                )}
-
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                        <label className="block text-sm font-bold text-gray-700 mb-2">Business Name</label>
-                        <div className="relative">
-                            <Store className="absolute left-3 top-3 text-gray-400" size={18} />
-                            <input 
-                                name="business_name"
-                                value={formData.business_name}
-                                onChange={handleChange}
-                                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none" 
-                            />
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-bold text-gray-700 mb-2">Owner Username</label>
-                        <div className="relative">
-                            <User className="absolute left-3 top-3 text-gray-400" size={18} />
-                            <input 
-                                name="username"
-                                value={formData.username}
-                                onChange={handleChange}
-                                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none" 
-                            />
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-bold text-gray-700 mb-2">Phone Number</label>
-                        <div className="relative">
-                            <Phone className="absolute left-3 top-3 text-gray-400" size={18} />
-                            <input 
-                                name="phone_number"
-                                value={formData.phone_number}
-                                onChange={handleChange}
-                                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none" 
-                            />
-                        </div>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-bold text-gray-700 mb-2">Change Password</label>
-                        <div className="relative">
-                            <Lock className="absolute left-3 top-3 text-gray-400" size={18} />
-                            <input 
-                                name="password"
-                                type="password"
-                                placeholder="Leave empty to keep current"
-                                value={formData.password}
-                                onChange={handleChange}
-                                className="w-full pl-10 pr-4 py-3 bg-gray-50 border border-gray-200 rounded-xl focus:ring-2 focus:ring-orange-500 outline-none" 
-                            />
-                        </div>
-                    </div>
-                </div>
-
-                <div className="pt-4 border-t border-gray-100 flex justify-end">
-                    <button type="submit" disabled={loading} className="bg-gray-900 text-white px-8 py-3 rounded-xl font-bold hover:bg-orange-600 transition-all shadow-lg flex items-center gap-2">
-                        <Save size={18} /> {loading ? 'Saving...' : 'Save Changes'}
-                    </button>
-                </div>
-            </form>
-        </div>
+        <label className="btn-ghost cursor-pointer px-4 py-2.5 text-[12.5px]">
+          {busy ? <Loader2 size={14} className="animate-spin" /> : 'Choose photo'}
+          <input type="file" accept="image/*" onChange={pick} className="hidden" disabled={busy} />
+        </label>
       </div>
+
+      {note && (
+        <p className={`mt-3 flex items-center gap-1.5 text-[12px] font-bold ${
+          note.kind === 'ok' ? 'text-success-dark' : 'text-warning-dark'}`}>
+          {note.kind === 'ok' ? <Check size={13} /> : <AlertCircle size={13} />} {note.text}
+        </p>
+      )}
     </div>
   );
-};
+}
 
-export default VendorProfile;
+/** Discount codes. */
+function Promotions() {
+  const [promos, setPromos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [draft, setDraft] = useState({ code: '', percent_off: 10, min_order: 0 });
+  const [saving, setSaving] = useState(false);
+
+  const load = () => vendorAPI.getPromotions()
+    .then((r) => { setPromos(r.data.promotions || []); setError(null); })
+    .catch(() => setError('Could not load your codes.'))
+    .finally(() => setLoading(false));
+
+  useEffect(() => {
+    let cancelled = false;
+    vendorAPI.getPromotions()
+      .then((r) => { if (!cancelled) { setPromos(r.data.promotions || []); setError(null); } })
+      .catch(() => { if (!cancelled) setError('Could not load your codes.'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const create = async (e) => {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    try {
+      await vendorAPI.createPromotion({
+        code: draft.code,
+        percent_off: Number(draft.percent_off),
+        min_order: Number(draft.min_order) || 0,
+      });
+      setDraft({ code: '', percent_off: 10, min_order: 0 });
+      await load();
+    } catch (err) {
+      setError(err.response?.data?.error || 'Could not create that code.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="panel skeleton h-52" />;
+
+  return (
+    <div className="panel p-5">
+      <h2 className="flex items-center gap-1.5 font-display text-[15px] font-bold text-text">
+        <Tag size={15} className="text-secondary-dark" /> Discount codes
+      </h2>
+      <p className="mt-0.5 text-[12px] text-text-lighter">
+        Customers type these at checkout. Max 70% off.
+      </p>
+
+      <form onSubmit={create} className="mt-4 grid grid-cols-2 items-end gap-2 sm:grid-cols-[1fr_5rem_6rem_auto]">
+        <label className="col-span-2 min-w-0 sm:col-span-1">
+          <span className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-text-lighter">Code</span>
+          <input value={draft.code} required maxLength={24}
+            onChange={(e) => setDraft((d) => ({ ...d, code: e.target.value.toUpperCase() }))}
+            placeholder="LUNCH10"
+            className="field mt-1.5 w-full px-3 py-2 text-[13px] font-bold uppercase tracking-wider" />
+        </label>
+        <label className="min-w-0">
+          <span className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-text-lighter">% off</span>
+          <input type="number" min={1} max={70} value={draft.percent_off}
+            onChange={(e) => setDraft((d) => ({ ...d, percent_off: e.target.value }))}
+            className="field tabular mt-1.5 w-full px-3 py-2 text-[13px]" />
+        </label>
+        <label className="min-w-0">
+          <span className="text-[10px] font-extrabold uppercase tracking-[0.12em] text-text-lighter">Min spend</span>
+          <input type="number" min={0} value={draft.min_order}
+            onChange={(e) => setDraft((d) => ({ ...d, min_order: e.target.value }))}
+            className="field tabular mt-1.5 w-full px-3 py-2 text-[13px]" />
+        </label>
+        <button type="submit" disabled={saving}
+          className="btn-ember col-span-2 flex items-center justify-center gap-1.5 px-4 py-2 text-[12.5px] disabled:opacity-60 sm:col-span-1">
+          {saving ? <Loader2 size={13} className="animate-spin" /> : <><Plus size={13} /> Add</>}
+        </button>
+      </form>
+
+      {error && (
+        <p className="mt-3 flex items-center gap-1.5 text-[12px] font-bold text-warning-dark">
+          <AlertCircle size={13} /> {error}
+        </p>
+      )}
+
+      {promos.length === 0 ? (
+        <p className="mt-4 text-[12.5px] text-text-lighter">No codes yet.</p>
+      ) : (
+        <ul className="mt-4 space-y-2">
+          {promos.map((p) => (
+            <li key={p.id} className="flex items-center gap-2.5 rounded-xl border border-text/8 bg-white/60 p-3">
+              <span className={`tabular rounded-md px-2 py-1 text-[12px] font-extrabold tracking-wider ${
+                p.is_active ? 'bg-secondary/20 text-secondary-dark' : 'bg-neutral text-text-lighter line-through'}`}>
+                {p.code}
+              </span>
+              <div className="min-w-0 flex-1 text-[11.5px] font-semibold text-text-light">
+                {p.percent_off}% off
+                {p.min_order > 0 && <> · min KES {p.min_order}</>}
+                <span className="tabular ml-1.5 text-text-lighter">· used {p.times_redeemed}×</span>
+              </div>
+              <button onClick={() => vendorAPI.togglePromotion(p.id, !p.is_active).then(load)}
+                title={p.is_active ? 'Deactivate' : 'Activate'}
+                className={`shrink-0 p-1 ${p.is_active ? 'text-success-dark' : 'text-text-lighter'} hover:text-primary`}>
+                <Power size={14} />
+              </button>
+              <button onClick={() => vendorAPI.deletePromotion(p.id).then(load)} title="Delete"
+                className="shrink-0 p-1 text-text-lighter hover:text-warning">
+                <Trash2 size={14} />
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+export default function VendorProfile() {
+  const navigate = useNavigate();
+
+  return (
+    <div className="min-h-[100dvh]">
+      <nav className="pt-safe sticky top-0 z-50 border-b border-text/5 bg-white/78 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-3xl items-center gap-3 px-4 py-3 sm:px-6">
+          <button onClick={() => navigate('/vendor/dashboard')} className="btn-ghost p-2.5" aria-label="Back">
+            <ArrowLeft size={16} />
+          </button>
+          <span className="font-display text-[15px] font-extrabold tracking-tight text-text">
+            Settings
+          </span>
+        </div>
+      </nav>
+
+      <main className="mx-auto max-w-3xl space-y-4 px-4 py-6 sm:px-6 sm:py-9">
+        <AccountPanel />
+        <StorefrontImage />
+        <Promotions />
+      </main>
+    </div>
+  );
+}
