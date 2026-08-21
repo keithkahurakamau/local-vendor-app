@@ -303,6 +303,54 @@ All of these were repaired in one pass; the notes explain *why* the shape is wha
 - `/api/admin/logs` 500'd whenever a transaction existed (`Transaction` had no `vendor`
   relationship).
 
+### Kanban audit (2026-08-21) and the fixes it forced
+
+All 36 closed issues were re-verified against the running app. 33 pass. The audit
+turned up three real defects that had been marked Done:
+
+- **`/search` and `/nearby` had drifted apart.** Search emitted `menu_items` while
+  the client reads `vendor.menu`, and omitted `updated` and `cheapest_item`. The
+  `Array.isArray(vendor.menu)` guard turned that into a silently **empty menu**, so
+  searching "samosa" returned a card that did not list the samosa, with no price and
+  no freshness countdown. Both routes now build their payload through
+  `_serialise_vendor()` in `customer_routes.py`; `test_search_and_nearby_return_the_same_vendor_shape`
+  compares the two key sets so they cannot drift again. **Do not hand-roll a vendor
+  dict in a route.**
+- **`/pay` had no rate limiting**, which kanban AUTH05 and ORDER-PAY both required.
+  Every accepted call sends a real STK prompt to a real handset, so the abuse is the
+  prompt itself. `app/utils/rate_limit.py` throttles on the **phone number** (protects
+  the victim) and the **caller's IP** (stops one attacker cycling numbers): 5 per phone
+  and 20 per IP per 10 minutes, returning 429 with `Retry-After`. Rejected calls are
+  not recorded, so hammering cannot extend a lockout. State is per-process and
+  in-memory - with several workers the limit multiplies, which is the accepted trade
+  for not needing Redis on a free tier.
+- **The test suite depended on a developer's personal Gmail.** Flask-Mail requires a
+  sender even when `MAIL_SUPPRESS_SEND` is on, and the base `Config` takes it from
+  `MAIL_USERNAME` in `.env`; nine tests 500'd with "does not specify a sender" on a
+  checkout without one. `TestingConfig` now pins a dummy sender. The suite is hermetic.
+
+`mock_stk` returns a fixed `CheckoutRequestID` and that column is UNIQUE, so any test
+that pays more than once must use **`mock_stk_unique`** - otherwise the second call
+500s on an IntegrityError that looks like a payment bug.
+
+Three items remain unmet, all deliberate rather than missing work:
+
+- **#25 `POST /vendor/login`** and **#26 `POST /vendor/update-location`** name routes
+  that do not exist. The behaviour lives at `/api/auth/login` and `/api/vendor/checkin`.
+  Rename the cards rather than adding alias routes.
+- **#34 asks for `sessionStorage`**; `AuthContext` uses `localStorage`, so a vendor is
+  not logged out every time they open a tab. Changing it would be a UX regression -
+  neither store defends against XSS.
+
+### backend/.env is easy to destroy by switching branches
+
+`backend/.env` was **tracked** on old `main` (e0a8394) and deleted later. Checking out
+or fast-forwarding across that boundary **removes the file from your working tree**,
+taking any local-only values (mail, Google, OpenAI) with it - they are in no blob and
+cannot be recovered from git. Back it up before any branch switch that crosses those
+commits. The fullest historical version is blob `818a57b7` (13 settings, leaked - the
+`SECRET_KEY` and `JWT_SECRET_KEY` there must never be reused).
+
 ### Still open
 
 - The `OPENAI_API_KEY` in `.env` returns 401. AI descriptions fall back to canned text until it's replaced.

@@ -74,6 +74,14 @@ class TestingConfig(Config):
     # Never send real mail or hit real payment/AI providers from tests
     MAIL_SUPPRESS_SEND = True
     OPENAI_API_KEY = None
+    # Flask-Mail still requires a sender even when sending is suppressed, and the
+    # base Config takes it from MAIL_USERNAME in .env. That made the password-reset
+    # and notification tests depend on a developer's personal Gmail being present:
+    # nine tests 500'd with "does not specify a sender" on a clean checkout. Pin a
+    # dummy sender so the suite is hermetic.
+    MAIL_USERNAME = 'test@hyperlocal.invalid'
+    MAIL_PASSWORD = 'not-a-real-password'
+    MAIL_DEFAULT_SENDER = 'test@hyperlocal.invalid'
 
 config = {
     'development': DevelopmentConfig,

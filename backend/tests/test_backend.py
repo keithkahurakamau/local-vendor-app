@@ -107,6 +107,19 @@ def _login(client, email, password='Vendor123!'):
     return json.loads(response.data)['token']
 
 
+@pytest.fixture(autouse=True)
+def _reset_rate_limits():
+    """
+    The /pay limiter keys on a real wall-clock window held in module state, so
+    without this the eighth test to post the same phone number would 429 and the
+    failure would look like a payment bug.
+    """
+    from app.utils import rate_limit
+    rate_limit.reset()
+    yield
+    rate_limit.reset()
+
+
 @pytest.fixture
 def mock_stk(monkeypatch):
     """Replace the Daraja call so tests never touch the network."""
@@ -121,6 +134,28 @@ def mock_stk(monkeypatch):
             'account_reference': account_reference,
         })
         return {'ResponseCode': '0', 'CheckoutRequestID': 'ws_CO_TEST_123'}
+
+    monkeypatch.setattr(customer_routes.mpesa_handler, 'initiate_stk_push', fake_push)
+    return calls
+
+
+@pytest.fixture
+def mock_stk_unique(monkeypatch):
+    """
+    Like mock_stk but with a fresh CheckoutRequestID per call.
+
+    transactions.checkout_request_id is UNIQUE, so any test that pays more than
+    once needs this - the fixed id in mock_stk makes the second call 500 on an
+    IntegrityError, which looks like a payment bug rather than a fixture limit.
+    """
+    from app.routes import customer_routes
+
+    calls = []
+
+    def fake_push(phone_number, amount, account_reference, transaction_desc):
+        calls.append({'phone_number': phone_number, 'amount': amount,
+                      'account_reference': account_reference})
+        return {'ResponseCode': '0', 'CheckoutRequestID': f'ws_CO_TEST_{len(calls)}_{account_reference}'}
 
     monkeypatch.setattr(customer_routes.mpesa_handler, 'initiate_stk_push', fake_push)
     return calls
@@ -1410,3 +1445,87 @@ def test_checkin_still_succeeds_if_notifications_fail(client, seeded, monkeypatc
     r = client.post('/api/vendor/checkin', headers={'Authorization': f'Bearer {vtoken}'},
                     json={'latitude': 0.0, 'longitude': 0.0, 'menu_items': []})
     assert r.status_code == 200
+
+
+# --------------------------------------------------------------------------
+# Vendor payload contract
+# --------------------------------------------------------------------------
+
+def test_search_and_nearby_return_the_same_vendor_shape(client, seeded):
+    """
+    These two drifted once already: /search emitted `menu_items` while the client
+    reads `vendor.menu`, so searching for a dish returned a card that did not list
+    it - and the Array.isArray guard on the client turned that into a silently
+    empty menu instead of an error. Locking the shapes together stops it recurring.
+    """
+    near = json.loads(client.get('/api/customer/nearby?lat=0.0&lon=0.0&radius=5000').data)['vendors']
+    found = json.loads(client.get('/api/customer/search?item=Samosa&lat=0.0&lon=0.0').data)['vendors']
+
+    assert near and found, 'fixture must return at least one vendor from each route'
+    assert set(near[0]) == set(found[0]), (
+        f'contract drift: only in nearby={set(near[0]) - set(found[0])}, '
+        f'only in search={set(found[0]) - set(near[0])}'
+    )
+
+
+def test_search_results_carry_a_usable_menu(client, seeded):
+    """The searched-for item must actually be listed on the result."""
+    vendors = json.loads(client.get('/api/customer/search?item=Samosa&lat=0.0&lon=0.0').data)['vendors']
+    king = next(v for v in vendors if v['name'] == 'Samosa King')
+
+    assert isinstance(king['menu'], list) and king['menu'], 'menu must be a non-empty list'
+    assert any('samosa' in (i['name'] or '').lower() for i in king['menu'])
+    assert king['updated'] is not None, 'freshness countdown needs `updated`'
+
+
+# --------------------------------------------------------------------------
+# Payment rate limiting  (kanban AUTH05 / ORDER-PAY)
+# --------------------------------------------------------------------------
+
+def test_pay_is_rate_limited_per_phone(client, seeded, mock_stk_unique):
+    """
+    Every accepted /pay rings a real handset, so an unthrottled route is a way to
+    make a stranger's phone buzz on demand. Guest checkout means there is no JWT
+    to key on - the phone in the payload is the identity available.
+    """
+    from app.routes.customer_routes import PAY_LIMIT_PER_PHONE
+
+    payload = {'vendorId': seeded['samosa'].id, 'amount': 100,
+               'phone': '+254799888777', 'items': []}
+
+    for i in range(PAY_LIMIT_PER_PHONE):
+        assert client.post('/api/customer/pay', json=payload).status_code == 200, f'call {i} rejected early'
+
+    blocked = client.post('/api/customer/pay', json=payload)
+    assert blocked.status_code == 429
+    assert blocked.headers.get('Retry-After')
+    assert 'retry_after' in json.loads(blocked.data)
+
+
+def test_rate_limit_is_scoped_to_the_phone_not_the_whole_route(client, seeded, mock_stk_unique):
+    """One throttled number must not block every other customer."""
+    from app.routes.customer_routes import PAY_LIMIT_PER_PHONE
+
+    for _ in range(PAY_LIMIT_PER_PHONE + 1):
+        client.post('/api/customer/pay', json={
+            'vendorId': seeded['samosa'].id, 'amount': 100, 'phone': '+254700000111', 'items': []})
+
+    other = client.post('/api/customer/pay', json={
+        'vendorId': seeded['samosa'].id, 'amount': 100, 'phone': '+254700000222', 'items': []})
+    assert other.status_code == 200, 'a different phone must still be served'
+
+
+def test_a_blocked_caller_does_not_extend_its_own_lockout(client, seeded, mock_stk):
+    """Rejected calls are not recorded, so hammering cannot push the window out."""
+    from app.utils import rate_limit
+
+    key = 'pay:phone:test-lockout'
+    for _ in range(5):
+        rate_limit.check(key, 5, 600)
+
+    first = rate_limit.check(key, 5, 600)[1]
+    for _ in range(20):
+        rate_limit.check(key, 5, 600)
+    later = rate_limit.check(key, 5, 600)[1]
+
+    assert later <= first, 'retry_after grew while blocked - rejected calls are being counted'

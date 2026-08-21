@@ -5,6 +5,7 @@ from app.utils.geospatial import haversine_distance
 from app.utils.menu import normalise_menu_items, menu_matches
 from app.utils import order_status as st
 from app.utils.notify import push
+from app.utils import rate_limit
 from flask_jwt_extended import jwt_required, get_jwt_identity, verify_jwt_in_request
 from app.utils.mpesa_handler import MpesaHandler
 from datetime import datetime
@@ -14,6 +15,36 @@ bp = Blueprint('customer', __name__, url_prefix='/api/customer')
 mpesa_handler = MpesaHandler()
 
 # --- 1. SEARCH VENDORS ---
+def _serialise_vendor(v, dist):
+    """
+    The one shape every vendor list returns.
+
+    /search and /nearby had drifted: search emitted `menu_items` while the
+    frontend reads `vendor.menu`, and omitted `updated` and `cheapest_item`. The
+    Array.isArray guard on the client turned that into an empty menu rather than
+    an error, so a customer searching "samosa" got a card that did not list the
+    samosa. Building both payloads here means they cannot disagree again.
+    """
+    menu = normalise_menu_items(v.menu_items)
+    prices = [i['price'] for i in menu if i['price']]
+    average, count = vendor_rating(v.vendor_id)
+    return {
+        'id': v.id,
+        'vendor_id': v.vendor_id,
+        'latitude': v.latitude,
+        'longitude': v.longitude,
+        'distance': round(dist, 1),
+        'menu': menu,
+        'cheapest_item': min(prices) if prices else None,
+        'rating': average,
+        'rating_count': count,
+        'name': v.vendor.business_name if v.vendor else "Unknown",
+        'image': v.vendor.storefront_image_url if v.vendor else None,
+        'status': 'Open',
+        'updated': v.updated_at,
+    }
+
+
 @bp.route('/search', methods=['GET'])
 def search_vendors():
     item = request.args.get('item', '').lower().strip()
@@ -30,19 +61,7 @@ def search_vendors():
         if dist > 5.0: continue
 
         if menu_matches(v.menu_items, item):
-            results.append({
-                'id': v.id, 
-                'vendor_id': v.vendor_id, 
-                'latitude': v.latitude, 
-                'longitude': v.longitude, 
-                'distance': round(dist, 1),
-                'menu_items': normalise_menu_items(v.menu_items),
-                'name': v.vendor.business_name if v.vendor else "Unknown",
-                'image': v.vendor.storefront_image_url if v.vendor else None,
-                'rating': vendor_rating(v.vendor_id)[0],
-                'rating_count': vendor_rating(v.vendor_id)[1],
-                'status': 'Open'
-            })
+            results.append(_serialise_vendor(v, dist))
             
     return jsonify({'success': True, 'vendors': results}), 200
 
@@ -76,9 +95,8 @@ def get_nearby_vendors():
         if dist > rad:
             continue
 
-        menu = normalise_menu_items(v.menu_items)
-        prices = [i['price'] for i in menu if i['price']]
-        cheapest = min(prices) if prices else None
+        payload = _serialise_vendor(v, dist)
+        cheapest = payload['cheapest_item']
 
         # A price filter asks "can I eat here for X?", so it matches on the cheapest
         # item rather than excluding a stall because one expensive dish is on the menu.
@@ -87,25 +105,10 @@ def get_nearby_vendors():
         if min_price is not None and (cheapest is None or cheapest < min_price):
             continue
 
-        average, count = vendor_rating(v.vendor_id)
-        if min_rating is not None and (average is None or average < min_rating):
+        if min_rating is not None and (payload['rating'] is None or payload['rating'] < min_rating):
             continue
 
-        results.append({
-            'id': v.id,
-            'vendor_id': v.vendor_id,
-            'latitude': v.latitude,
-            'longitude': v.longitude,
-            'distance': round(dist, 1),
-            'menu': menu,
-            'cheapest_item': cheapest,
-            'rating': average,
-            'rating_count': count,
-            'name': v.vendor.business_name if v.vendor else "Unknown",
-            'image': v.vendor.storefront_image_url if v.vendor else None,
-            'status': 'Open',
-            'updated': v.updated_at
-        })
+        results.append(payload)
 
     if sort_by == 'rating':
         # Unrated vendors sort last rather than as zero, which would read as "bad".
@@ -159,6 +162,13 @@ def get_vendor_details(vendor_id):
         return jsonify({'error': 'Server Error'}), 500
 
 # --- 4. REAL PAYMENT INTEGRATION (STK PUSH) ---
+# STK pushes are the abusable side of this app: five prompts to one handset in
+# ten minutes is already generous for a real customer retrying a failed payment.
+PAY_LIMIT_PER_PHONE = 5
+PAY_LIMIT_PER_IP = 20
+PAY_WINDOW = 600  # seconds
+
+
 @bp.route('/pay', methods=['POST'])
 def initiate_payment():
     data = request.get_json()
@@ -173,6 +183,22 @@ def initiate_payment():
 
     if not vendor_id or not amount or not phone:
         return jsonify({'success': False, 'error': 'Missing payment details'}), 400
+
+    # --- rate limit -------------------------------------------------------
+    # Each accepted call rings a real handset, so this is throttled on the phone
+    # being pushed to (protects the victim) and on the caller's IP (stops one
+    # attacker cycling numbers). Guest checkout means there is no JWT to key on.
+    digits = ''.join(ch for ch in str(phone) if ch.isdigit())[-9:]
+    allowed, retry = rate_limit.check(f'pay:phone:{digits}', PAY_LIMIT_PER_PHONE, PAY_WINDOW)
+    if allowed:
+        allowed, retry = rate_limit.check(
+            f'pay:ip:{request.remote_addr}', PAY_LIMIT_PER_IP, PAY_WINDOW)
+    if not allowed:
+        return jsonify({
+            'success': False,
+            'error': 'Too many payment attempts. Please wait a moment and try again.',
+            'retry_after': retry,
+        }), 429, {'Retry-After': str(retry)}
 
     try:
         # Optional identity: /pay is reachable without a token (guest checkout), so
