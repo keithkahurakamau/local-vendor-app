@@ -2,13 +2,65 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  font-family: 'Inter', system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
+/* ==========================================================================
+   HyperLocal - "Daylight Signal"
+   Vendors broadcast for three hours, then vanish. Every surface is built around
+   that one idea: something is live right now, and its window is closing.
 
-  color: #111827; /* gray-900 */
-  background-color: #F9FAFB; /* gray-50 */
+   Palette is the project's existing tailwind.config.js theme, unchanged:
+   primary #FF6B35 · secondary #FFD166 · accent #118AB2 · success #06D6A0
+   warning #EF476F · background #FDFDFD/#F5F5F5 · text #2D2D2D
+   ========================================================================== */
+
+:root {
+  /* --- brand (unchanged from tailwind.config.js) --- */
+  --primary:        #FF6B35;
+  --primary-light:  #FF8A5C;
+  --primary-dark:   #E55A2A;
+
+  --secondary:       #FFD166;
+  --secondary-light: #FFDC8A;
+  --secondary-dark:  #F5C242;
+
+  --accent:       #118AB2;
+  --accent-light: #3BA3C4;
+  --accent-dark:  #0D6A87;
+
+  --success:       #06D6A0;
+  --success-light: #3CE0B3;
+  --success-dark:  #05B587;
+
+  --warning:       #EF476F;
+  --warning-light: #F36D8C;
+  --warning-dark:  #D93A5E;
+
+  --bg:      #FDFDFD;
+  --bg-gray: #F5F5F5;
+
+  --text:         #2D2D2D;
+  --text-light:   #5D5D5D;
+  --text-lighter: #8D8D8D;
+
+  --neutral:       #E0E0E0;
+  --neutral-light: #EFEFEF;
+  --neutral-dark:  #BDBDBD;
+
+  /* --- type --- */
+  --font-display: 'Unbounded', 'Poppins', 'Trebuchet MS', sans-serif;
+  --font-body: 'Manrope', 'Inter', ui-sans-serif, system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --radius-card: 1.25rem;
+  --radius-pill: 999px;
+
+  /* thumb-reachable safe areas on notched phones */
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+
+  font-family: var(--font-body);
+  line-height: 1.55;
+  color: var(--text);
+  background-color: var(--bg);
 
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -16,24 +68,251 @@
   -moz-osx-font-smoothing: grayscale;
 }
 
+* { -webkit-tap-highlight-color: transparent; }
+
 body {
   margin: 0;
   min-width: 320px;
-  min-height: 100vh;
+  min-height: 100dvh;
+  background: var(--bg);
+  overflow-x: hidden;
 }
 
-/* Scrollbar Customization for Webkit */
-::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+/* Atmosphere: a soft gradient mesh drawn only from the brand palette, so the
+   page has depth instead of sitting on flat white. Fixed + inert = free on scroll. */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background:
+    radial-gradient(52rem 34rem at 8% -8%,  rgba(255, 107, 53, 0.13), transparent 60%),
+    radial-gradient(40rem 30rem at 96% 4%,  rgba(255, 209, 102, 0.16), transparent 62%),
+    radial-gradient(46rem 34rem at 72% 96%, rgba(6, 214, 160, 0.09),  transparent 64%),
+    radial-gradient(38rem 28rem at 4% 88%,  rgba(17, 138, 178, 0.07), transparent 62%);
 }
-::-webkit-scrollbar-track {
-  background: transparent;
+
+#root { position: relative; z-index: 1; }
+
+h1, h2, h3, .font-display {
+  font-family: var(--font-display);
+  letter-spacing: -0.03em;
+  line-height: 1.04;
 }
+
+.tabular { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+/* --------------------------------------------------------------------------
+   Components
+   -------------------------------------------------------------------------- */
+@layer components {
+
+  /* Frosted card. The inset top highlight is what gives light glass real
+     dimension rather than looking like a flat grey rectangle. */
+  .panel {
+    background: linear-gradient(158deg, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.74));
+    border: 1px solid rgba(45, 45, 45, 0.07);
+    box-shadow:
+      0 1px 0 0 rgba(255, 255, 255, 0.9) inset,
+      0 18px 44px -28px rgba(45, 45, 45, 0.42);
+    backdrop-filter: blur(14px);
+    border-radius: var(--radius-card);
+  }
+
+  .panel-hot {
+    border-color: rgba(255, 107, 53, 0.3);
+    box-shadow:
+      0 1px 0 0 rgba(255, 255, 255, 0.95) inset,
+      0 0 0 1px rgba(255, 107, 53, 0.07),
+      0 24px 50px -30px rgba(255, 107, 53, 0.55);
+  }
+
+  /* Primary action */
+  .btn-ember {
+    background: linear-gradient(180deg, var(--primary-light), var(--primary-dark));
+    color: #FFFFFF;
+    font-weight: 800;
+    border-radius: var(--radius-pill);
+    box-shadow:
+      0 1px 0 0 rgba(255, 255, 255, 0.42) inset,
+      0 10px 26px -12px rgba(255, 107, 53, 0.75);
+    transition: transform 0.18s cubic-bezier(.2,.9,.3,1), box-shadow 0.18s, filter 0.18s;
+  }
+  .btn-ember:hover { transform: translateY(-2px); filter: brightness(1.05); }
+  .btn-ember:active { transform: translateY(0) scale(0.985); }
+
+  .btn-ghost {
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(45, 45, 45, 0.1);
+    color: var(--text);
+    border-radius: var(--radius-pill);
+    font-weight: 700;
+    transition: background 0.18s, border-color 0.18s, transform 0.18s, color 0.18s;
+  }
+  .btn-ghost:hover {
+    background: rgba(255, 107, 53, 0.08);
+    border-color: rgba(255, 107, 53, 0.42);
+    color: var(--primary-dark);
+    transform: translateY(-1px);
+  }
+
+  .field {
+    background: rgba(255, 255, 255, 0.82);
+    border: 1px solid rgba(45, 45, 45, 0.11);
+    color: var(--text);
+    border-radius: 0.85rem;
+    transition: border-color 0.18s, box-shadow 0.18s, background 0.18s;
+  }
+  .field::placeholder { color: var(--text-lighter); }
+  .field:focus {
+    outline: none;
+    background: #FFFFFF;
+    border-color: rgba(255, 107, 53, 0.62);
+    box-shadow: 0 0 0 4px rgba(255, 107, 53, 0.14);
+  }
+
+  /* Status chips - success = live, warning = closing, neutral = closed */
+  .chip-live {
+    background: rgba(6, 214, 160, 0.12);
+    border: 1px solid rgba(6, 214, 160, 0.4);
+    color: var(--success-dark);
+    border-radius: var(--radius-pill);
+    font-weight: 800;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+  }
+  .chip-closing {
+    background: rgba(239, 71, 111, 0.1);
+    border: 1px solid rgba(239, 71, 111, 0.38);
+    color: var(--warning-dark);
+    border-radius: var(--radius-pill);
+    font-weight: 800;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+  }
+  .chip-dim {
+    background: rgba(45, 45, 45, 0.05);
+    border: 1px solid rgba(45, 45, 45, 0.1);
+    color: var(--text-lighter);
+    border-radius: var(--radius-pill);
+    font-weight: 700;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+  }
+
+  .rule {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(45, 45, 45, 0.14), transparent);
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Motion - one orchestrated entrance beats scattered micro-animations
+   -------------------------------------------------------------------------- */
+@keyframes rise {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: none; }
+}
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* The beacon: a ring expanding out of a live vendor marker */
+@keyframes ping-ring {
+  0%   { transform: scale(0.55); opacity: 0.8; }
+  70%  { transform: scale(2.3);  opacity: 0; }
+  100% { transform: scale(2.3);  opacity: 0; }
+}
+@keyframes breathe {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.55; transform: scale(0.86); }
+}
+@keyframes sweep {
+  from { background-position: -180% 0; }
+  to   { background-position: 180% 0; }
+}
+
+.animate-rise { animation: rise 0.65s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-fade-in { animation: fade 0.5s ease-out both; }
+.animate-slide-up { animation: rise 0.5s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.animate-breathe { animation: breathe 2.1s ease-in-out infinite; }
+
+.stagger > * { animation: rise 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+.stagger > *:nth-child(1) { animation-delay: 0.04s; }
+.stagger > *:nth-child(2) { animation-delay: 0.10s; }
+.stagger > *:nth-child(3) { animation-delay: 0.16s; }
+.stagger > *:nth-child(4) { animation-delay: 0.22s; }
+.stagger > *:nth-child(5) { animation-delay: 0.28s; }
+.stagger > *:nth-child(6) { animation-delay: 0.34s; }
+.stagger > *:nth-child(7) { animation-delay: 0.40s; }
+.stagger > *:nth-child(8) { animation-delay: 0.46s; }
+
+.skeleton {
+  background: linear-gradient(90deg, rgba(45,45,45,0.05) 25%, rgba(45,45,45,0.1) 50%, rgba(45,45,45,0.05) 75%);
+  background-size: 220% 100%;
+  animation: sweep 1.5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
+
+/* --------------------------------------------------------------------------
+   Scrollbars + utilities
+   -------------------------------------------------------------------------- */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: var(--neutral-light); }
 ::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
-  border-radius: 4px;
+  background: var(--neutral-dark);
+  border-radius: 99px;
+  border: 3px solid var(--neutral-light);
 }
-::-webkit-scrollbar-thumb:hover {
-  background: #94A3B8;
+::-webkit-scrollbar-thumb:hover { background: var(--primary); }
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+.snap-rail { scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch; }
+.snap-rail > * { scroll-snap-align: center; }
+
+.pb-safe { padding-bottom: calc(1rem + var(--safe-b)); }
+.pt-safe { padding-top: calc(1rem + var(--safe-t)); }
+
+/* --------------------------------------------------------------------------
+   Leaflet overrides - popups and markers are rebuilt from scratch
+   -------------------------------------------------------------------------- */
+.leaflet-container { background: var(--bg-gray); font-family: var(--font-body); }
+
+.leaflet-control-attribution {
+  background: rgba(255, 255, 255, 0.8) !important;
+  color: var(--text-lighter) !important;
+  font-size: 10px !important;
+  backdrop-filter: blur(6px);
 }
+.leaflet-control-attribution a { color: var(--text-light) !important; }
+
+.leaflet-control-zoom a {
+  background: rgba(255, 255, 255, 0.94) !important;
+  color: var(--text) !important;
+  border-color: rgba(45, 45, 45, 0.1) !important;
+  backdrop-filter: blur(8px);
+}
+.leaflet-control-zoom a:hover { background: var(--primary) !important; color: #fff !important; }
+
+/* Strip Leaflet's white bubble - popups are custom components */
+.leaflet-popup-content-wrapper {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+}
+.leaflet-popup-content { margin: 0 !important; width: auto !important; }
+.leaflet-popup-tip { display: none !important; }
+.leaflet-popup-close-button { display: none !important; }
+.leaflet-popup { margin-bottom: 18px; }
+
+/* Marker wrappers must not paint their own box */
+.hl-marker { background: transparent !important; border: none !important; }

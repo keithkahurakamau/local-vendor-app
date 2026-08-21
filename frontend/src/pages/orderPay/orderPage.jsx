@@ -7,6 +7,8 @@ import {
 } from 'react-icons/fi';
 import { BiStore } from 'react-icons/bi';
 import mapService from '../../services/mapService';
+// 1. IMPORT CART CONTEXT
+import { useCart } from '../../context/CartContext'; 
 
 // --- SAFE IMAGE COMPONENT ---
 const VendorImage = ({ src, alt, className }) => {
@@ -25,7 +27,7 @@ const VendorImage = ({ src, alt, className }) => {
             src={src} 
             alt={alt} 
             className={className}
-            onError={() => setHasError(true)}
+            onError={() => setHasError(true)} 
         />
     );
 };
@@ -33,12 +35,13 @@ const VendorImage = ({ src, alt, className }) => {
 const OrderPage = () => {
   const navigate = useNavigate();
   const { vendorId } = useParams();
-  const location = useLocation();
+  
+  // 2. USE CART CONTEXT
+  const { cart, addToCart, removeFromCart } = useCart();
 
   // --- STATE ---
   const [vendor, setVendor] = useState(null);
   const [menuItems, setMenuItems] = useState([]);
-  const [cart, setCart] = useState([]);
   
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
@@ -46,7 +49,6 @@ const OrderPage = () => {
   
   // UI State
   const [cartCollapsed, setCartCollapsed] = useState(false);
-  const [animatingItems, setAnimatingItems] = useState(new Set());
   
   // USER INPUT STATE (Delivery Location)
   const [deliveryLocation, setDeliveryLocation] = useState('');
@@ -87,41 +89,23 @@ const OrderPage = () => {
   }, [menuItems, searchQuery]);
 
   // --- CART HANDLERS ---
-  const handleCart = (action, item) => {
-    setCart(prev => {
-      const itemId = item.id || item.name; 
-      const existing = prev.find(i => (i.id || i.name) === itemId);
-      
-      let newCart;
-
-      if (action === 'add') {
-        const itemObj = typeof item === 'string' ? { name: item, price: 0, id: item } : item;
-        
-        newCart = existing
-          ? prev.map(i => (i.id || i.name) === itemId ? { ...i, qty: i.qty + 1 } : i)
-          : [...prev, { ...itemObj, qty: 1 }];
-
-        if (!existing) {
-          setAnimatingItems(prevSet => new Set([...prevSet, itemId]));
-          setTimeout(() => {
-            setAnimatingItems(prevSet => {
-              const newSet = new Set(prevSet);
-              newSet.delete(itemId);
-              return newSet;
-            });
-          }, 500);
-        }
-      } else if (action === 'remove') {
-        newCart = prev.map(i => (i.id || i.name) === itemId ? { ...i, qty: i.qty - 1 } : i).filter(i => i.qty > 0);
-      } else {
-        newCart = prev;
-      }
-
-      return newCart;
-    });
+  const handleAddToCart = (item) => {
+      const itemObj = typeof item === 'string' ? { name: item, price: 0, id: item } : item;
+      // Use Context method (handles validation)
+      addToCart(vendor, itemObj);
   };
 
-  const cartTotal = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
+  const handleRemoveFromCart = (item) => {
+      const itemId = item.id || item.name;
+      removeFromCart(itemId);
+  };
+
+  // 3. Filter Cart Items for THIS Vendor (or show global if matching)
+  // Actually, CartContext enforces single vendor, so cart.items is safe to use directly
+  // providing cart.vendorId matches current vendorId.
+  // If cart has items from another vendor, they will be visible in the cart UI until cleared.
+  const currentCartItems = cart.items || [];
+  const cartTotal = cart.total || 0;
 
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-orange-50">
@@ -141,12 +125,11 @@ const OrderPage = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-orange-50 pb-24 lg:pb-0">
       
-      {/* UPDATED HEADER / NAVBAR */}
+      {/* HEADER / NAVBAR */}
       <nav className="sticky top-0 z-40 bg-white/80 backdrop-blur-lg border-b border-orange-100 shadow-sm transition-all duration-300">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16 gap-4">
             
-            {/* Left: Back Button & Vendor Info */}
             <div className="flex items-center gap-4 flex-1 min-w-0">
               <button 
                 onClick={() => navigate(-1)} 
@@ -175,7 +158,6 @@ const OrderPage = () => {
               </div>
             </div>
 
-            {/* Right: Brand Logo (Visible on Tablet/Desktop) */}
             <div className="hidden sm:flex items-center gap-2 pl-4 border-l border-orange-100 h-8">
                 <div className="bg-orange-600 p-1.5 rounded-lg shadow-sm shadow-orange-200">
                     <BiStore className="text-white text-lg" />
@@ -207,7 +189,6 @@ const OrderPage = () => {
             </div>
           </div>
 
-          {/* Sticky Search Bar */}
           <div className="sticky top-[72px] z-30 bg-orange-50/95 backdrop-blur-sm py-2 -mx-2 px-2 rounded-lg">
             <div className="relative">
               <FiSearch className="absolute left-3 top-3.5 text-orange-300" />
@@ -239,7 +220,7 @@ const OrderPage = () => {
                 {filteredItems.map((item, index) => {
                   const itemObj = typeof item === 'string' ? { name: item, price: 0, id: index } : item;
                   const itemId = itemObj.id || itemObj.name;
-                  const inCart = cart.find(c => (c.id || c.name) === itemId);
+                  const inCart = currentCartItems.find(c => (c.id || c.name) === itemId);
 
                   return (
                     <div key={itemId} className="bg-white p-3 rounded-xl border border-orange-100 shadow-sm flex gap-3 hover:border-orange-300 hover:shadow-orange-100/50 transition-all group">
@@ -260,13 +241,13 @@ const OrderPage = () => {
                           
                           {inCart ? (
                             <div className="flex items-center gap-3 bg-gray-900 text-white rounded-lg px-2 py-1 shadow-md shadow-orange-100">
-                              <button onClick={() => handleCart('remove', itemObj)} className="hover:text-orange-300 transition-colors"><FiMinus size={12}/></button>
+                              <button onClick={() => handleRemoveFromCart(itemObj)} className="hover:text-orange-300 transition-colors"><FiMinus size={12}/></button>
                               <span className="text-xs font-bold w-3 text-center">{inCart.qty}</span>
-                              <button onClick={() => handleCart('add', itemObj)} className="hover:text-orange-300 transition-colors"><FiPlus size={12}/></button>
+                              <button onClick={() => handleAddToCart(itemObj)} className="hover:text-orange-300 transition-colors"><FiPlus size={12}/></button>
                             </div>
                           ) : (
                             <button 
-                              onClick={() => handleCart('add', itemObj)}
+                              onClick={() => handleAddToCart(itemObj)}
                               className="bg-orange-50 text-orange-600 p-2 rounded-lg hover:bg-orange-500 hover:text-white transition-all duration-300 group-hover:shadow-md"
                             >
                               <FiPlus size={16} />
@@ -290,9 +271,9 @@ const OrderPage = () => {
             <div className="p-5 border-b border-orange-100 bg-orange-50/50 backdrop-blur flex items-center justify-between cursor-pointer" onClick={() => setCartCollapsed(!cartCollapsed)}>
               <h2 className="font-bold text-gray-900 text-lg flex items-center gap-2">
                 <FiShoppingCart className="text-orange-600"/> Your Order
-                {cart.length > 0 && (
+                {currentCartItems.length > 0 && (
                   <span className="bg-orange-600 text-white text-xs px-2 py-1 rounded-full font-bold animate-pulse">
-                    {cart.reduce((a, b) => a + b.qty, 0)}
+                    {currentCartItems.reduce((a, b) => a + b.qty, 0)}
                   </span>
                 )}
               </h2>
@@ -302,13 +283,13 @@ const OrderPage = () => {
             {!cartCollapsed && (
               <>
                 <div className="flex-1 overflow-y-auto p-4 space-y-3 custom-scrollbar">
-                  {cart.length === 0 ? (
+                  {currentCartItems.length === 0 ? (
                     <div className="text-center py-12 text-gray-400">
                       <FiShoppingCart className="text-3xl mx-auto mb-3 opacity-30 text-orange-300" />
                       <p className="font-medium text-sm">Cart is empty</p>
                     </div>
                   ) : (
-                    cart.map(item => (
+                    currentCartItems.map(item => (
                       <div key={item.id || item.name} className="flex justify-between items-center text-sm p-3 rounded-xl border bg-white border-orange-50">
                         <div className="flex items-center gap-3">
                           <div className="bg-orange-50 text-orange-700 w-6 h-6 rounded flex items-center justify-center font-bold text-xs border border-orange-100">
@@ -318,7 +299,7 @@ const OrderPage = () => {
                         </div>
                         <div className="flex items-center gap-3">
                           <span className="text-gray-600 font-medium text-xs">{(item.price * item.qty).toLocaleString()}</span>
-                          <button onClick={() => handleCart('remove', item)} className="text-gray-300 hover:text-red-500 transition-colors p-1">
+                          <button onClick={() => handleRemoveFromCart(item)} className="text-gray-300 hover:text-red-500 transition-colors p-1">
                             <FiTrash2 size={14} />
                           </button>
                         </div>
@@ -327,7 +308,7 @@ const OrderPage = () => {
                   )}
                 </div>
 
-                {cart.length > 0 && (
+                {currentCartItems.length > 0 && (
                   <div className="p-5 bg-orange-50/30 border-t border-orange-100 space-y-4">
                     <div className="space-y-3">
                         <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Delivery Location</label>
@@ -346,7 +327,7 @@ const OrderPage = () => {
                     </div>
 
                     <button
-                      onClick={() => navigate('/payment', { state: { cart, vendor, landmark: deliveryLocation } })}
+                      onClick={() => navigate('/payment', { state: { cart: currentCartItems, vendor, landmark: deliveryLocation } })}
                       className="w-full py-3.5 rounded-xl font-bold text-white bg-gray-900 hover:bg-orange-600 shadow-lg shadow-orange-200 transition-all"
                     >
                       Proceed to Checkout
@@ -360,7 +341,7 @@ const OrderPage = () => {
       </div>
 
       {/* MOBILE BOTTOM BAR */}
-      {cart.length > 0 && (
+      {currentCartItems.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 lg:hidden p-4 bg-white border-t border-orange-100 shadow-2xl z-50">
           <button
             onClick={() => setShowOrderModal(true)}
@@ -368,7 +349,7 @@ const OrderPage = () => {
           >
             <div className="flex items-center gap-3">
               <span className="bg-orange-500 text-white px-2 py-0.5 rounded text-sm font-bold">
-                {cart.reduce((a, b) => a + b.qty, 0)}
+                {currentCartItems.reduce((a, b) => a + b.qty, 0)}
               </span>
               <span className="font-medium">View Order</span>
             </div>
@@ -391,7 +372,7 @@ const OrderPage = () => {
             </div>
 
             <div className="flex-1 overflow-y-auto p-5 space-y-3 custom-scrollbar">
-               {cart.map(item => (
+               {currentCartItems.map(item => (
                   <div key={item.id || item.name} className="flex justify-between items-center text-sm p-3 bg-white border border-orange-100 rounded-xl shadow-sm">
                     <div className="flex items-center gap-3">
                         <div className="bg-orange-50 text-orange-700 w-8 h-8 rounded-lg flex items-center justify-center font-bold text-sm">
@@ -401,7 +382,7 @@ const OrderPage = () => {
                     </div>
                     <div className="flex items-center gap-4">
                         <span className="font-bold">KES {(item.price * item.qty).toLocaleString()}</span>
-                        <button onClick={() => handleCart('remove', item)} className="text-gray-400 hover:text-red-500 p-1">
+                        <button onClick={() => handleRemoveFromCart(item)} className="text-gray-400 hover:text-red-500 p-1">
                             <FiTrash2 size={16} />
                         </button>
                     </div>
@@ -428,7 +409,7 @@ const OrderPage = () => {
               <button
                 onClick={() => {
                   setShowOrderModal(false);
-                  navigate('/payment', { state: { cart, vendor, landmark: deliveryLocation } });
+                  navigate('/payment', { state: { cart: currentCartItems, vendor, landmark: deliveryLocation } });
                 }}
                 className="w-full py-4 rounded-xl font-bold text-white bg-gray-900 hover:bg-orange-600 transition-colors shadow-lg"
               >

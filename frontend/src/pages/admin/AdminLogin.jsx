@@ -3,9 +3,11 @@ import { useNavigate } from 'react-router-dom';
 // ADDED: Eye, EyeOff
 import { Shield, Lock, Loader2, AlertTriangle, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 import api from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 
 const AdminLogin = () => {
   const navigate = useNavigate();
+  const { login } = useAuth();
   const [formData, setFormData] = useState({ email: '', password: '' });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -25,11 +27,14 @@ const AdminLogin = () => {
     try {
       // Correct endpoint as defined in backend blueprint
       const response = await api.post('/admin/login', formData);
-      
-      // Store token with a specific key to distinguish from vendor/user
-      localStorage.setItem('admin_token', response.data.token);
-      
-      navigate('/admin/dashboard');
+
+      // Must go through AuthContext: /admin/dashboard is wrapped in
+      // <ProtectedRoute roles={['admin']}>, which reads user+token from context.
+      // Writing only to localStorage leaves context empty and bounces to /login.
+      const { token, admin } = response.data;
+      login(token, { ...admin, role: 'admin' });
+
+      navigate('/admin/dashboard', { replace: true });
     } catch (err) {
       console.error(err);
       setError(err.response?.data?.error || 'Access Denied: Invalid credentials or insufficient permissions.');

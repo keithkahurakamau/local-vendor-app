@@ -1,394 +1,407 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { MapContainer, TileLayer, Marker, useMapEvents } from 'react-leaflet';
+import { useState, useEffect, useCallback, useMemo, useReducer } from 'react';
 import { useNavigate } from 'react-router-dom';
-import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
-import { FiGrid, FiMap, FiSearch, FiNavigation, FiList, FiAlertCircle } from 'react-icons/fi';
-import { useGeoLocation } from '../../hooks/useGeoLocation';
+import {
+  Search, LayoutGrid, Map as MapIcon, X, ChevronUp, Loader2, Store, AlertCircle,
+  SlidersHorizontal, Star,
+} from 'lucide-react';
+
+import LiveMap from '../../components/map/LiveMap';
+import AreaBar from '../../components/map/AreaBar';
+import NotificationBell from '../../components/common/NotificationBell';
+import { useLiveLocation } from '../../hooks/useLiveLocation';
 import { useLocation } from '../../context/LocationContext';
 import mapService from '../../services/mapService';
+import Stars from '../../components/common/Stars';
+import FavouriteButton from '../../components/common/FavouriteButton';
+import {
+  secondsLeft, urgency, formatCountdown, formatDistance, walkMinutes, URGENCY_COLOR,
+} from '../../lib/geo';
 
-// --- Draggable Marker Component ---
-const DraggableMarker = ({ position, setPosition, onDragEnd }) => {
-  useMapEvents({
-    click(e) {
-      setPosition(e.latlng);
-      if (onDragEnd) onDragEnd(e.latlng.lat, e.latlng.lng);
-    }
-  });
+const NAIROBI = { lat: -1.2864, lon: 36.8172 };
+const RADIUS_M = 5000;
 
-  return position ? (
-    <Marker
-      position={position}
-      draggable={true}
-      eventHandlers={{
-        dragend: (e) => {
-          const newPos = e.target.getLatLng();
-          setPosition(newPos);
-          if (onDragEnd) onDragEnd(newPos.lat, newPos.lng);
-        }
-      }}
-    />
-  ) : null;
-};
+/** Live countdown chip. Ticks locally so it stays honest without refetching. */
+function Countdown({ updated, compact = false }) {
+  const [, tick] = useReducer((n) => n + 1, 0);
+  useEffect(() => {
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+  const left = secondsLeft(updated);
 
-// --- Leaflet Icons Config ---
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
+  const { hex, label } = URGENCY_COLOR[urgency(left)];
 
-const userIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
-});
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full font-extrabold uppercase tracking-widest ${
+        compact ? 'px-2 py-0.5 text-[9px]' : 'px-2.5 py-1 text-[10px]'
+      }`}
+      style={{ background: `${hex}1A`, color: hex, border: `1px solid ${hex}4D` }}
+    >
+      <span className="h-1.5 w-1.5 rounded-full animate-breathe" style={{ background: hex }} />
+      <span className="tabular">{left > 0 ? formatCountdown(left) : label}</span>
+    </span>
+  );
+}
 
-const vendorIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
-});
+function VendorTile({ vendor, onOpen }) {
+  const items = Array.isArray(vendor.menu) ? vendor.menu : [];
+  const mins = walkMinutes(vendor.distance);
 
-function MapPage() {
+  return (
+    <button
+      onClick={() => onOpen(vendor)}
+      className="panel group w-full overflow-hidden text-left transition-all duration-300 hover:-translate-y-1"
+    >
+      <div className="relative h-28 overflow-hidden bg-gradient-to-br from-primary/10 via-secondary/10 to-success/10">
+        {vendor.image ? (
+          <img src={vendor.image} alt="" className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+        ) : (
+          <div className="flex h-full items-center justify-center">
+            <Store className="text-primary/25" size={30} />
+          </div>
+        )}
+        <div className="absolute left-2.5 top-2.5">
+          <Countdown updated={vendor.updated} compact />
+        </div>
+        <div className="absolute right-2.5 top-2.5">
+          <FavouriteButton vendorId={vendor.vendor_id} size={13} />
+        </div>
+        <div className="tabular absolute bottom-2.5 right-2.5 rounded-full bg-white/90 px-2 py-0.5 text-[10px] font-bold text-text shadow-sm backdrop-blur">
+          {formatDistance(vendor.distance)}
+        </div>
+      </div>
+
+      <div className="p-3.5">
+        <h3 className="font-display line-clamp-2 text-[14px] font-bold leading-snug text-text transition-colors group-hover:text-primary">
+          {vendor.name}
+        </h3>
+        {mins != null && <p className="mt-0.5 text-[11px] font-semibold text-text-lighter">{mins} min walk</p>}
+        <div className="mt-1.5">
+          <Stars rating={vendor.rating} count={vendor.rating_count} />
+        </div>
+
+        <div className="mt-2.5 flex flex-wrap gap-1.5">
+          {items.slice(0, 3).map((item, i) => (
+            <span key={item.id ?? i} className="rounded-md border border-primary/15 bg-primary/5 px-1.5 py-0.5 text-[10px] font-semibold text-primary-dark">
+              {item.name}
+            </span>
+          ))}
+          {items.length > 3 && (
+            <span className="rounded-md px-1 py-0.5 text-[10px] font-semibold text-text-lighter">+{items.length - 3}</span>
+          )}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+export default function MapPage() {
   const navigate = useNavigate();
-  const { location: userLocation } = useGeoLocation();
-  const { updateLocation } = useLocation();
+  const { searchOrigin, isDefaultOrigin, updateLocation } = useLocation();
+  const { location: live, status, refresh } = useLiveLocation({ enabled: false });
 
-  // State
-  const [viewMode, setViewMode] = useState('map');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [view, setView] = useState('map');
+  const [query, setQuery] = useState('');
   const [vendors, setVendors] = useState([]);
-  const [selectedVendor, setSelectedVendor] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [mapCenter, setMapCenter] = useState([ -1.2864, 36.8172 ]); 
-  const [radius] = useState(5000);
-  const [manualLocation, setManualLocation] = useState(null);
-  const [userMarker, setUserMarker] = useState(null);
-  const [visibleVendorsCount, setVisibleVendorsCount] = useState(3);
+  const [origin, setOrigin] = useState(() => ({ lat: searchOrigin.lat, lon: searchOrigin.lon }));
+  const [flyKey, setFlyKey] = useState(0);
+  const [sheetOpen, setSheetOpen] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState({ max_price: '', min_rating: '', sort: 'distance' });
 
-  const searchInputRef = useRef(null);
-  const mapRef = useRef(null);
-
-  // --- Logic Helpers ---
-  const calculateVisibleVendors = useCallback(() => {
-    let cardWidth;
-    if (window.innerWidth < 640) cardWidth = 280; 
-    else if (window.innerWidth < 1024) cardWidth = 300;
-    else cardWidth = 320; 
-    
-    const gap = 16; 
-    const padding = 32; 
-    const availableWidth = window.innerWidth - padding;
-    const cardsThatFit = Math.floor(availableWidth / (cardWidth + gap));
-    return Math.max(1, cardsThatFit); 
-  }, []);
-
-  useEffect(() => {
-    const updateVisibleCount = () => setVisibleVendorsCount(calculateVisibleVendors());
-    updateVisibleCount(); 
-    window.addEventListener('resize', updateVisibleCount);
-    return () => window.removeEventListener('resize', updateVisibleCount);
-  }, [calculateVisibleVendors]);
-
-  useEffect(() => {
-    if (userLocation) {
-      setMapCenter([userLocation.lat, userLocation.lon]);
-      updateLocation(userLocation.lat, userLocation.lon);
-
-      const loadNearbyVendors = async () => {
-        setLoading(true);
-        setError(null);
-        try {
-          const response = await mapService.getNearbyVendors(userLocation.lat, userLocation.lon, radius);
-          if (response.success) {
-            setVendors(response.vendors);
-            if (response.vendors.length === 0) setError(`No vendors found within ${radius / 1000}km`);
-          }
-        } catch (err) {
-          setError(err?.response?.data?.error || 'Failed to load nearby vendors.');
-        } finally {
-          setLoading(false);
-        }
-      };
-      loadNearbyVendors();
+  const load = useCallback(async (lat, lon) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const list = await mapService.getNearbyVendors(lat, lon, RADIUS_M, filters);
+      setVendors(Array.isArray(list) ? list : []);
+      if (!list?.length) setError('No vendors broadcasting within 5km right now.');
+    } catch {
+      setError('Could not reach the server.');
+      setVendors([]);
+    } finally {
+      setLoading(false);
     }
-  }, [userLocation, updateLocation, radius]);
+  }, [filters]);
+
+  useEffect(() => { load(searchOrigin.lat, searchOrigin.lon); }, [load]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Follow the live fix, then let taps and search drive.
+  useEffect(() => {
+    if (!live) return;
+    setOrigin({ lat: live.lat, lon: live.lon });
+    updateLocation(live.lat, live.lon, { source: 'gps' });
+    setFlyKey((k) => k + 1);
+    load(live.lat, live.lon);
+  }, [live?.lat, live?.lon]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = async (e) => {
     e?.preventDefault();
-    if (!searchQuery.trim()) {
-      setError('Please enter a food item or place to search');
-      return;
-    }
+    const q = query.trim();
+    if (!q) return load(origin.lat, origin.lon);
+
     setLoading(true);
     setError(null);
-
     try {
-      const places = await mapService.searchPlaces(searchQuery);
-      if (places.length > 0) {
-        const place = places[0];
-        setMapCenter([place.lat, place.lon]);
-        const response = await mapService.getNearbyVendors(place.lat, place.lon, radius);
-        if (response.success) {
-          setVendors(response.vendors);
-          if (response.vendors.length === 0) setError(`No vendors found near "${place.name}"`);
-        }
+      const places = await mapService.searchPlaces(q);
+      if (places.length) {
+        const p = places[0];
+        setOrigin({ lat: p.lat, lon: p.lon });
+        updateLocation(p.lat, p.lon, { source: 'manual', label: p.name.split(',')[0] });
+        setFlyKey((k) => k + 1);
+        const list = await mapService.getNearbyVendors(p.lat, p.lon, RADIUS_M);
+        setVendors(list);
+        if (!list.length) setError(`Nothing broadcasting near ${p.name.split(',')[0]}.`);
       } else {
-        const searchLat = userLocation?.lat || -1.2864;
-        const searchLon = userLocation?.lon || 36.8172;
-        const response = await mapService.searchVendors(searchQuery, searchLat, searchLon, radius);
-        if (response.success) {
-          setVendors(response.vendors);
-          if (response.vendors.length === 0) setError(`No vendors found selling "${searchQuery}"`);
-        }
+        const list = await mapService.searchVendors(q, origin.lat, origin.lon);
+        setVendors(list);
+        if (!list.length) setError(`No one nearby is selling "${q}" right now.`);
       }
     } catch {
-      setError('Failed to search.');
+      setError('Search failed. Try again.');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleFindNearby = async () => {
-    setLoading(true);
-    setError(null);
-    setSearchQuery('');
-    setManualLocation(null);
+  const handleMapTap = useCallback((lat, lon, label) => {
+    setOrigin({ lat, lon });
+    updateLocation(lat, lon, { source: 'manual', label });
+    load(lat, lon);
+  }, [load, updateLocation]);
 
-    try {
-      navigator.geolocation.getCurrentPosition(
-        async (position) => {
-          const { latitude, longitude } = position.coords;
-          updateLocation(latitude, longitude);
-          setUserMarker({ lat: latitude, lon: longitude });
-          if (mapRef.current) {
-            mapRef.current.flyTo([latitude, longitude], 15, { duration: 2.0 });
-          }
-          setMapCenter([latitude, longitude]);
-          const response = await mapService.getNearbyVendors(latitude, longitude, radius);
-          if (response.success) setVendors(response.vendors);
-          setLoading(false);
-        },
-        async () => {
-          const defaultLat = -1.2864;
-          const defaultLon = 36.8172;
-          setMapCenter([defaultLat, defaultLon]);
-          const response = await mapService.getNearbyVendors(defaultLat, defaultLon, radius);
-          if (response.success) setVendors(response.vendors);
-          setLoading(false);
-        },
-        { timeout: 10000, enableHighAccuracy: true }
-      );
-    } catch {
-      setError('Failed to find nearby vendors.');
-      setLoading(false);
-    }
-  };
+  const openVendor = (vendor) => navigate(`/order/${vendor.vendor_id}`, { state: { vendor } });
 
-  const handleDragEnd = async (lat, lng) => {
-    setManualLocation({ lat, lon: lng });
-    setMapCenter([lat, lng]);
-    updateLocation(lat, lng);
-    setError(null);
-    setLoading(true);
-    try {
-      const response = await mapService.getNearbyVendors(lat, lng, radius);
-      if (response.success) setVendors(response.vendors);
-    } catch {
-      setError('Failed to find vendors at location.');
-      setLoading(false);
-    }
-  };
-
-  const handleOrderClick = (vendor) => {
-    navigate(`/order/${vendor.id}`, { state: { vendor } });
-  };
-
-  const formatDistance = (meters) => {
-    if (meters < 1000) return `${Math.round(meters)}m`;
-    return `${(meters / 1000).toFixed(1)}km`;
-  };
-
-  const formatTimeAgo = (timestamp) => {
-    const diffMins = Math.floor((new Date() - new Date(timestamp)) / 60000);
-    if (diffMins < 1) return 'Just now';
-    if (diffMins < 60) return `${diffMins}m ago`;
-    const diffHours = Math.floor(diffMins / 60);
-    if (diffHours < 24) return `${diffHours}h ago`;
-    return `${Math.floor(diffHours / 24)}d ago`;
-  };
+  const sorted = useMemo(
+    () => [...vendors].sort((a, b) => (a.distance ?? 99) - (b.distance ?? 99)),
+    [vendors]
+  );
 
   return (
-    <div className="min-h-screen bg-gray-50 p-4 sm:p-6 flex flex-col font-sans">
-      <div className="flex-1 bg-white rounded-3xl shadow-xl border border-gray-200 overflow-hidden flex flex-col relative h-[calc(100vh-3rem)]">
-        
-        {/* --- Toolbar --- */}
-        <div className="bg-white border-b border-gray-100 p-4 z-20 flex flex-col sm:flex-row gap-4 items-center justify-between shadow-sm relative">
-          <form onSubmit={handleSearch} className="flex-1 w-full max-w-2xl flex gap-3">
-            <div className="relative flex-1 group">
-              <FiSearch className="absolute left-3 top-3.5 text-gray-400 text-lg group-focus-within:text-orange-500 transition-colors" />
+    <div className="flex h-[100dvh] flex-col overflow-hidden">
+      <header className="pt-safe z-20 shrink-0 border-b border-text/5 bg-white/75 px-3 pb-2.5 backdrop-blur-xl sm:px-5">
+        <div className="mx-auto flex max-w-7xl items-center gap-2 pt-2.5">
+          <button onClick={() => navigate('/')} className="font-display shrink-0 text-[17px] font-extrabold tracking-tight text-text">
+            Hyper<span className="text-primary">Local</span>
+          </button>
+
+          <form onSubmit={handleSearch} className="ml-auto flex flex-1 items-center gap-2 sm:max-w-xl">
+            <div className="relative flex-1">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-text-lighter" />
               <input
-                ref={searchInputRef}
-                type="text"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                placeholder="Search food, location..."
-                className="w-full pl-10 pr-4 py-2.5 bg-gray-50 border border-gray-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 focus:bg-white transition-all caret-orange-500 text-gray-900"
-                disabled={loading}
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Dish or place..."
+                aria-label="Search dish or place"
+                className="field w-full py-2.5 pl-9 pr-8 text-[13px] font-medium"
               />
+              {query && (
+                <button type="button" onClick={() => { setQuery(''); load(origin.lat, origin.lon); }}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-text-lighter hover:text-warning" aria-label="Clear search">
+                  <X size={14} />
+                </button>
+              )}
             </div>
-            <button type="submit" className="px-6 py-2.5 bg-orange-600 text-white font-bold rounded-xl hover:bg-orange-700 active:scale-95 transition-all shadow-sm disabled:opacity-50" disabled={loading}>
-              {loading ? '...' : 'Search'}
+            <button type="submit" disabled={loading} className="btn-ember shrink-0 px-4 py-2.5 text-[12px]">
+              {loading ? <Loader2 size={15} className="animate-spin" /> : 'Find'}
             </button>
-            <button type="button" onClick={handleFindNearby} className="px-4 py-2.5 bg-white border border-gray-200 text-gray-700 font-bold rounded-xl hover:border-orange-300 hover:text-orange-600 transition-all shadow-sm flex items-center gap-2 whitespace-nowrap active:bg-gray-50" disabled={loading}>
-              <FiNavigation className="text-orange-500" />
-              <span className="hidden sm:inline">Near Me</span>
-            </button>
+
           </form>
 
-          {/* View Toggle */}
-          <div className="bg-gray-100 p-1 rounded-lg flex items-center relative border border-gray-200 w-full sm:w-auto">
-             <button 
-                onClick={() => setViewMode('grid')} 
-                className={`flex-1 sm:flex-none px-4 py-2 rounded-md text-sm font-bold flex items-center justify-center gap-2 transition-all ${viewMode === 'grid' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-             >
-                <FiGrid /> Grid
-             </button>
-             <button 
-                onClick={() => setViewMode('map')} 
-                className={`flex-1 sm:flex-none px-4 py-2 rounded-md text-sm font-bold flex items-center justify-center gap-2 transition-all ${viewMode === 'map' ? 'bg-white text-orange-600 shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
-             >
-                <FiMap /> Map
-             </button>
+          <NotificationBell />
+
+          <div className="ml-1 hidden shrink-0 rounded-full border border-text/8 bg-white/70 p-0.5 sm:flex">
+            <button onClick={() => setView('map')} aria-label="Map view"
+              className={`rounded-full p-2 transition-all ${view === 'map' ? 'bg-primary text-white shadow-sm' : 'text-text-lighter hover:text-text'}`}>
+              <MapIcon size={15} />
+            </button>
+            <button onClick={() => setView('grid')} aria-label="Grid view"
+              className={`rounded-full p-2 transition-all ${view === 'grid' ? 'bg-primary text-white shadow-sm' : 'text-text-lighter hover:text-text'}`}>
+              <LayoutGrid size={15} />
+            </button>
           </div>
         </div>
 
-        {error && (
-          <div className="absolute top-24 left-1/2 -translate-x-1/2 z-[1000] bg-red-50 text-red-600 px-4 py-2 rounded-lg border border-red-200 shadow-lg text-sm font-bold flex items-center gap-2 animate-bounce">
-            <FiAlertCircle /> {error}
+        <div className="mx-auto mt-2 max-w-7xl">
+          <AreaBar
+            origin={{ ...origin, source: isDefaultOrigin ? 'default' : searchOrigin.source, label: searchOrigin.label }}
+            isDefault={isDefaultOrigin}
+            geoStatus={status}
+            onUseMyLocation={() => { refresh(); setFlyKey((k) => k + 1); }}
+            onPick={(lat, lon, label) => { handleMapTap(lat, lon, label); setFlyKey((k) => k + 1); }}
+            compact
+          />
+        </div>
+
+        <div className="mx-auto mt-1.5 flex max-w-7xl flex-wrap items-center gap-x-2.5 gap-y-1 text-[11px] font-semibold">
+          <button onClick={() => setShowFilters((v) => !v)}
+            className={`flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 transition-all ${
+              showFilters || filters.max_price || filters.min_rating || filters.sort !== 'distance'
+                ? 'border-primary/40 bg-primary/10 text-primary-dark'
+                : 'border-text/10 bg-white/70 text-text-light'}`}>
+            <SlidersHorizontal size={11} /> Filters
+          </button>
+          <span className="tabular whitespace-nowrap text-text-light">{loading ? 'Scanning...' : `${sorted.length} live`}</span>
+          {status === 'tracking' && (
+            <span className="inline-flex items-center gap-1 text-success-dark">
+              <span className="h-1.5 w-1.5 animate-breathe rounded-full bg-success" />
+              Live tracking
+            </span>
+          )}
+          {error && (
+            <span className="inline-flex min-w-0 items-center gap-1 text-text-lighter sm:ml-auto">
+              <AlertCircle size={12} className="shrink-0" />
+              <span className="truncate">{error}</span>
+            </span>
+          )}
+        </div>
+        {showFilters && (
+          <div className="animate-slide-up mx-auto mt-2 flex max-w-7xl flex-wrap items-center gap-2 border-t border-text/5 pt-2.5">
+            <label className="flex items-center gap-1.5 text-[11px] font-bold text-text-light">
+              Under KES
+              <input type="number" min="0" value={filters.max_price}
+                onChange={(e) => setFilters((f) => ({ ...f, max_price: e.target.value }))}
+                placeholder="any"
+                className="field tabular w-20 px-2 py-1 text-[11.5px]" />
+            </label>
+
+            <div className="flex items-center gap-1">
+              <span className="text-[11px] font-bold text-text-light">Rated</span>
+              {[3, 4, 4.5].map((r) => (
+                <button key={r}
+                  onClick={() => setFilters((f) => ({ ...f, min_rating: f.min_rating === String(r) ? '' : String(r) }))}
+                  className={`flex items-center gap-0.5 rounded-full px-2 py-1 text-[11px] font-bold transition-all ${
+                    filters.min_rating === String(r)
+                      ? 'bg-secondary text-text' : 'bg-white/70 text-text-lighter hover:text-text'}`}>
+                  <Star size={9} className={filters.min_rating === String(r) ? 'fill-text' : ''} /> {r}+
+                </button>
+              ))}
+            </div>
+
+            <select value={filters.sort}
+              onChange={(e) => setFilters((f) => ({ ...f, sort: e.target.value }))}
+              className="field px-2.5 py-1 text-[11.5px] font-bold">
+              <option value="distance">Nearest</option>
+              <option value="rating">Best rated</option>
+              <option value="price">Cheapest</option>
+              <option value="newest">Just arrived</option>
+            </select>
+
+            {(filters.max_price || filters.min_rating || filters.sort !== 'distance') && (
+              <button onClick={() => setFilters({ max_price: '', min_rating: '', sort: 'distance' })}
+                className="text-[11px] font-bold text-warning-dark hover:underline">
+                Clear
+              </button>
+            )}
           </div>
         )}
+      </header>
 
-        {/* --- Content --- */}
-        <div className="flex-1 relative bg-gray-50">
-          
-          {viewMode === 'map' && (
-            <>
-              {mapCenter ? (
-                <MapContainer
-                  center={mapCenter}
-                  zoom={13}
-                  className="h-full w-full absolute inset-0 z-0 bg-gray-100"
-                  zoomControl={false}
-                  whenReady={(map) => { mapRef.current = map; }}
-                >
-                  <TileLayer
-                    attribution='&copy; OpenStreetMap'
-                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                  />
-                  <DraggableMarker position={manualLocation} setPosition={setManualLocation} onDragEnd={handleDragEnd} />
-                  {(userMarker || userLocation || manualLocation) && (
-                    <Marker position={[(manualLocation || userMarker || userLocation).lat, (manualLocation || userMarker || userLocation).lon]} icon={userIcon} />
-                  )}
-                  {vendors.map((vendor) => (
-                    vendor.latitude && vendor.longitude ? (
-                      <Marker key={vendor.id} position={[vendor.latitude, vendor.longitude]} icon={vendorIcon} eventHandlers={{ click: () => setSelectedVendor(vendor) }} />
-                    ) : null
-                  ))}
-                </MapContainer>
-              ) : (
-                <div className="flex h-full items-center justify-center">
-                  <div className="animate-spin rounded-full h-8 w-8 border-2 border-orange-600 border-t-transparent"></div>
+      <main className="relative min-h-0 flex-1">
+        {view === 'map' ? (
+          <>
+            <LiveMap
+              vendors={sorted}
+              center={[origin.lat, origin.lon]}
+              userLocation={live}
+              onVendorSelect={openVendor}
+              onMapClick={handleMapTap}
+              flyKey={flyKey}
+              radiusKm={RADIUS_M / 1000}
+            />
+
+            <div className={`pointer-events-none absolute inset-x-0 bottom-0 z-[600] transition-transform duration-300 sm:hidden ${
+                sheetOpen ? 'translate-y-0' : 'translate-y-[calc(100%-15rem)]'}`}>
+              <div className="panel pointer-events-auto max-h-[72dvh] overflow-hidden rounded-b-none">
+                <button onClick={() => setSheetOpen((v) => !v)} className="flex w-full items-center justify-center gap-2 py-2.5" aria-expanded={sheetOpen}>
+                  <span className="h-1 w-9 rounded-full bg-neutral-dark" />
+                </button>
+                <div className="flex items-center gap-2 px-4 pb-2">
+                  <span className="font-display text-[13px] font-bold text-text">{sorted.length} nearby</span>
+                  <div className="ml-auto flex rounded-full border border-text/8 bg-white/70 p-0.5">
+                    <button onClick={() => setView('map')}
+                      className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold transition-all ${
+                        view === 'map' ? 'bg-primary text-white' : 'text-text-light'}`}>
+                      <MapIcon size={11} /> Map
+                    </button>
+                    <button onClick={() => setView('grid')}
+                      className={`flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-bold transition-all ${
+                        view === 'grid' ? 'bg-primary text-white' : 'text-text-light'}`}>
+                      <LayoutGrid size={11} /> List
+                    </button>
+                  </div>
+                  <ChevronUp size={16} className={`shrink-0 text-text-lighter transition-transform ${sheetOpen ? 'rotate-180' : ''}`} />
                 </div>
-              )}
 
-              {/* Vendor Cards Overlay */}
-              {vendors.length > 0 && (
-                <div className="absolute bottom-4 left-0 right-0 z-[400] overflow-x-auto px-4 pb-2 no-scrollbar">
-                  <div className="flex gap-4">
-                    {vendors.slice(0, visibleVendorsCount).map((vendor) => (
-                      <div key={vendor.id} className={`flex-shrink-0 w-80 bg-white rounded-xl shadow-xl p-4 cursor-pointer border-2 transition-all ${selectedVendor?.id === vendor.id ? 'border-orange-500 ring-4 ring-orange-500/10' : 'border-white hover:border-gray-100'}`} onClick={() => setSelectedVendor(vendor)}>
-                        <div className="flex justify-between items-start mb-2">
-                          <div>
-                            <h3 className="font-bold text-gray-900 truncate w-48">{vendor.name}</h3>
-                            <p className="text-xs text-gray-500 font-medium">{formatDistance(vendor.distance)} away • {formatTimeAgo(vendor.last_updated)}</p>
-                          </div>
-                          <span className="text-[10px] font-bold bg-orange-100 text-orange-700 px-2 py-1 rounded-full uppercase">Open</span>
-                        </div>
-                        <div className="flex flex-wrap gap-1 mb-4">
-                          {vendor.menu?.items?.slice(0, 2).map((item, idx) => (
-                            <span key={idx} className="text-[10px] bg-gray-50 text-gray-600 px-2 py-1 rounded border border-gray-100">{item}</span>
-                          ))}
-                        </div>
-                        <button onClick={(e) => { e.stopPropagation(); handleOrderClick(vendor); }} className="w-full py-2 bg-gray-900 text-white text-sm font-bold rounded-lg hover:bg-orange-600 transition-colors shadow-sm">
-                          View Menu
-                        </button>
+                {sheetOpen ? (
+                  <div className="pb-safe max-h-[54dvh] overflow-y-auto px-4 pb-20">
+                    <div className="stagger grid grid-cols-1 gap-3">
+                      {sorted.map((v) => <VendorTile key={v.id} vendor={v} onOpen={openVendor} />)}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="snap-rail no-scrollbar flex gap-3 overflow-x-auto px-4 pb-4">
+                    {sorted.map((v) => (
+                      <div key={v.id} className="w-[70vw] max-w-[16rem] shrink-0">
+                        <VendorTile vendor={v} onOpen={openVendor} />
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
-            </>
-          )}
+                )}
+              </div>
+            </div>
 
-          {viewMode === 'grid' && (
-            <div className="h-full overflow-y-auto p-4 sm:p-6 custom-scrollbar">
-              {vendors.length === 0 ? (
-                <div className="h-full flex flex-col items-center justify-center text-gray-400">
-                  <FiList className="text-5xl mb-3 opacity-20" />
-                  <p className="font-medium">No vendors found in this area.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
-                  {vendors.map((vendor) => (
-                    <div key={vendor.id} onClick={() => handleOrderClick(vendor)} className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-xl hover:shadow-orange-100/50 hover:-translate-y-1 transition-all cursor-pointer overflow-hidden group">
-                      <div className="h-32 bg-gray-100 relative overflow-hidden">
-                        <div className="absolute inset-0 flex items-center justify-center text-gray-400">
-                          {vendor.image ? <img src={vendor.image} alt={vendor.name} className="w-full h-full object-cover" /> : <span className="text-xs font-bold uppercase tracking-widest opacity-30">No Image</span>}
-                        </div>
-                        <div className="absolute top-3 right-3 bg-white/90 backdrop-blur px-2 py-1 rounded-full text-xs font-bold text-orange-700 shadow-sm border border-orange-100">
-                            {formatDistance(vendor.distance)}
-                        </div>
-                      </div>
-                      <div className="p-5">
-                        <h3 className="font-bold text-lg text-gray-900 mb-1 group-hover:text-orange-600 transition-colors line-clamp-1">{vendor.name}</h3>
-                        <p className="text-xs text-gray-500 mb-4 font-medium">Updated {formatTimeAgo(vendor.last_updated)}</p>
-                        
-                        <div className="space-y-2 mb-4 h-14 overflow-hidden">
-                          <p className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">Top Items</p>
-                          <div className="flex flex-wrap gap-1.5">
-                            {vendor.menu?.items?.slice(0, 3).map((item, idx) => (
-                              <span key={idx} className="text-[10px] bg-orange-50 text-orange-700 border border-orange-100 px-2 py-1 rounded-md">{item}</span>
-                            ))}
-                          </div>
-                        </div>
-                        <button 
-                            onClick={(e) => { e.stopPropagation(); handleOrderClick(vendor); }}
-                            className="w-full py-2.5 bg-white border border-gray-200 text-gray-700 font-bold rounded-xl group-hover:bg-orange-600 group-hover:text-white group-hover:border-orange-600 transition-all shadow-sm"
-                        >
-                            Order Now
-                        </button>
-                      </div>
+            {sorted.length > 0 && (
+              <div className="pointer-events-none absolute inset-x-0 bottom-4 z-[500] hidden px-4 sm:block">
+                <div className="snap-rail no-scrollbar pointer-events-auto mx-auto flex max-w-7xl gap-3 overflow-x-auto pb-1">
+                  {sorted.map((v) => (
+                    <div key={v.id} className="w-64 shrink-0">
+                      <VendorTile vendor={v} onOpen={openVendor} />
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
-          )}
+              </div>
+            )}
+          </>
+        ) : (
+          <div className="h-full overflow-y-auto px-4 py-5 sm:px-6">
+            {loading ? (
+              <div className="mx-auto grid max-w-7xl grid-cols-2 gap-4 lg:grid-cols-4">
+                {Array.from({ length: 8 }).map((_, i) => <div key={i} className="panel skeleton h-56" />)}
+              </div>
+            ) : sorted.length === 0 ? (
+              <div className="flex h-full flex-col items-center justify-center text-center">
+                <Store size={40} className="mb-3 text-neutral-dark" />
+                <p className="font-display text-base font-bold text-text">Nothing live here</p>
+                <p className="mt-1 max-w-xs text-sm text-text-lighter">Tap anywhere on the map to scan a different area.</p>
+              </div>
+            ) : (
+              <div className="stagger mx-auto grid max-w-7xl grid-cols-2 gap-4 lg:grid-cols-4">
+                {sorted.map((v) => <VendorTile key={v.id} vendor={v} onOpen={openVendor} />)}
+              </div>
+            )}
+          </div>
+        )}
+      </main>
+
+      <div className={`pointer-events-none fixed inset-x-0 bottom-3 z-[700] justify-center sm:hidden ${
+        view === 'grid' ? 'flex' : 'hidden'}`}>
+        <div className="panel pointer-events-auto flex gap-0.5 p-1">
+          <button onClick={() => setView('map')}
+            className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-[12px] font-bold transition-all ${
+              view === 'map' ? 'bg-primary text-white shadow-sm' : 'text-text-light'}`}>
+            <MapIcon size={14} /> Map
+          </button>
+          <button onClick={() => setView('grid')}
+            className={`flex items-center gap-1.5 rounded-full px-4 py-2 text-[12px] font-bold transition-all ${
+              view === 'grid' ? 'bg-primary text-white shadow-sm' : 'text-text-light'}`}>
+            <LayoutGrid size={14} /> List
+          </button>
         </div>
       </div>
     </div>
   );
 }
-
-export default MapPage;

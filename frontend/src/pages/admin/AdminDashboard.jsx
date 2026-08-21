@@ -4,6 +4,7 @@ import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import { Store, DollarSign, Users, LogOut, MapPin, Clock, Phone, FileText, Activity, Search, Hash } from 'lucide-react';
 import api from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
 import 'leaflet/dist/leaflet.css';
 
 // --- CUSTOM ORANGE MARKER SETUP ---
@@ -18,6 +19,7 @@ const orangeIcon = new L.Icon({
 
 const AdminDashboard = () => {
   const navigate = useNavigate();
+  const { logout } = useAuth();
   const [activeTab, setActiveTab] = useState('map');
   
   // Data State
@@ -88,9 +90,10 @@ const AdminDashboard = () => {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem('token');
+    // Clears context + localStorage together; removing the keys directly would
+    // leave a stale user in AuthContext and keep ProtectedRoute satisfied.
+    logout();
     localStorage.removeItem('admin_token');
-    localStorage.removeItem('user');
     navigate('/admin/login');
   };
 

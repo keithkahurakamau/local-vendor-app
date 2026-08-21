@@ -1,0 +1,205 @@
+import React, { useState, useEffect } from 'react';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
+import { User, Mail, Phone, Lock, Loader2, AlertCircle, ArrowLeft, Eye, EyeOff, Check, ShoppingBag } from 'lucide-react';
+import api from '../../services/api';
+import { useAuth } from '../../context/AuthContext';
+import GoogleLoginButton from '../../components/common/GoogleLoginButton';
+
+const SafeHeroImage = ({ src, alt }) => {
+  const [hasError, setHasError] = useState(false);
+  if (hasError || !src) {
+    return (
+      <div className="absolute inset-0 bg-gray-900 w-full h-full flex flex-col items-center justify-center text-gray-600 opacity-60">
+        <ShoppingBag className="h-16 w-16 mb-2 opacity-20" />
+      </div>
+    );
+  }
+  return <img src={src} alt={alt} className="absolute inset-0 w-full h-full object-cover opacity-60" onError={() => setHasError(true)} />;
+};
+
+const CustomerRegister = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { user, login } = useAuth(); // Get 'user' from context
+  
+  // 1. Get the 'from' location (e.g., /payment)
+  const from = location.state?.from;
+
+  const [formData, setFormData] = useState({
+    username: '',
+    email: '',
+    phone_number: '',
+    password: ''
+  });
+  
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  const [passwordCriteria, setPasswordCriteria] = useState({
+    length: false, number: false, special: false, upper: false
+  });
+  const [passwordScore, setPasswordScore] = useState(0);
+
+  // --- 2. NEW: REDIRECT LOGIC MOVED HERE ---
+  // This runs whenever 'user' changes. If user becomes logged in, we redirect.
+  useEffect(() => {
+    if (user) {
+      if (user.role === 'vendor') {
+        navigate('/vendor/dashboard', { replace: true });
+      } else {
+        // If 'from' exists (e.g. Payment), go there. Else go Home.
+        if (from) {
+          navigate(from.pathname, { state: from.state, replace: true });
+        } else {
+          navigate('/', { replace: true });
+        }
+      }
+    }
+  }, [user, navigate, from]);
+
+  useEffect(() => {
+    const pwd = formData.password;
+    const criteria = {
+      length: pwd.length >= 8,
+      number: /\d/.test(pwd),
+      special: /[!@#$%^&*(),.?":{}|<>]/.test(pwd),
+      upper: /[A-Z]/.test(pwd)
+    };
+    setPasswordCriteria(criteria);
+    const score = Object.values(criteria).filter(Boolean).length;
+    setPasswordScore(score);
+  }, [formData.password]);
+
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    if (passwordScore < 2) {
+       setError("Please create a stronger password.");
+       return;
+    }
+    setLoading(true);
+    setError('');
+
+    try {
+      const res = await api.post('/auth/register', { ...formData, role: 'customer' });
+      if (res.data.success) {
+        // 3. Just Login. The useEffect above will handle the redirect immediately after.
+        login(res.data.token, res.data.user);
+      }
+    } catch (err) {
+      setError(err.response?.data?.error || 'Registration failed.');
+      setLoading(false); // Only stop loading on error
+    }
+  };
+
+  const getStrengthColor = () => {
+    if (passwordScore <= 1) return 'bg-red-500';
+    if (passwordScore === 2) return 'bg-orange-500';
+    if (passwordScore === 3) return 'bg-yellow-500';
+    return 'bg-green-500';
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-orange-50 via-white to-orange-50 py-12 px-4 sm:px-6 lg:px-8 relative">
+      <div className="absolute top-6 left-6 z-20">
+        <Link to="/" className="flex items-center gap-2 text-gray-500 hover:text-orange-600 transition-colors font-medium bg-white px-4 py-2 rounded-full shadow-sm hover:shadow-orange-100 border border-orange-100">
+           <ArrowLeft className="h-4 w-4" /> Back to Home
+        </Link>
+      </div>
+
+      <div className="max-w-4xl w-full grid grid-cols-1 md:grid-cols-2 gap-8 bg-white rounded-3xl shadow-2xl shadow-orange-100/50 border border-orange-100 overflow-hidden relative z-10">
+        <div className="hidden md:block relative bg-gray-900">
+          <SafeHeroImage src="/images/hero1.jpg" alt="Delicious Food" />
+          <div className="relative z-10 p-12 h-full flex flex-col justify-between text-white">
+            <div>
+              <h2 className="text-4xl font-bold mb-4">Hungry?</h2>
+              <p className="text-lg text-gray-200">Discover the best street food in your neighborhood.</p>
+            </div>
+            <div className="space-y-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2 bg-orange-600 rounded-lg shadow-lg shadow-orange-900/50"><ShoppingBag className="h-6 w-6" /></div>
+                <div><p className="font-bold">Order in Seconds</p><p className="text-sm text-gray-300">Seamless checkout</p></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="p-8 sm:p-12">
+          <div className="mb-6">
+            <h2 className="text-3xl font-bold text-gray-900">Create Account</h2>
+            <p className="mt-2 text-gray-600">
+               {from ? "Create an account to complete your payment." : "Join us to order delicious local food."}
+            </p>
+          </div>
+
+          <div className="mb-6">
+             <GoogleLoginButton role="customer" from={from} />
+             <div className="relative flex py-2 items-center">
+                <div className="flex-grow border-t border-gray-200"></div>
+                <span className="flex-shrink-0 mx-4 text-gray-400 text-xs font-medium tracking-wide">OR SIGN UP WITH EMAIL</span>
+                <div className="flex-grow border-t border-gray-200"></div>
+            </div>
+          </div>
+
+          {error && (
+            <div className="mb-6 p-4 bg-red-50 border-l-4 border-red-500 flex items-center gap-3 rounded-r-lg animate-fadeIn">
+              <AlertCircle className="h-5 w-5 text-red-500 flex-shrink-0" />
+              <p className="text-sm text-red-700">{error}</p>
+            </div>
+          )}
+
+          <form className="space-y-5" onSubmit={handleSubmit}>
+            <div className="grid grid-cols-1 gap-5">
+              <div className="relative">
+                <User className="absolute left-3 top-3.5 h-5 w-5 text-orange-300" />
+                <input name="username" type="text" required placeholder="Username" className="w-full pl-10 pr-4 py-3 border border-orange-200 rounded-xl outline-none" value={formData.username} onChange={handleChange} />
+              </div>
+              <div className="relative">
+                <Mail className="absolute left-3 top-3.5 h-5 w-5 text-orange-300" />
+                <input name="email" type="email" required placeholder="Email Address" className="w-full pl-10 pr-4 py-3 border border-orange-200 rounded-xl outline-none" value={formData.email} onChange={handleChange} />
+              </div>
+              <div className="relative">
+                <Phone className="absolute left-3 top-3.5 h-5 w-5 text-orange-300" />
+                <input name="phone_number" type="tel" required placeholder="Phone Number" className="w-full pl-10 pr-4 py-3 border border-orange-200 rounded-xl outline-none" value={formData.phone_number} onChange={handleChange} />
+              </div>
+              <div className="relative">
+                <Lock className="absolute left-3 top-3.5 h-5 w-5 text-orange-300" />
+                <input name="password" type={showPassword ? "text" : "password"} required placeholder="Create Password" className="w-full pl-10 pr-12 py-3 border border-orange-200 rounded-xl outline-none" value={formData.password} onChange={handleChange} />
+                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-3.5 text-gray-400 hover:text-orange-500 focus:outline-none transition-colors">
+                  {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
+                </button>
+              </div>
+              {formData.password.length > 0 && (
+                  <div className="mt-3 animate-fadeIn">
+                      <div className="h-1.5 w-full bg-gray-200 rounded-full mb-3 overflow-hidden">
+                          <div className={`h-full transition-all duration-500 ease-out ${getStrengthColor()}`} style={{ width: `${(passwordScore / 4) * 100}%` }}></div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2 text-xs text-gray-500">
+                          <div className={`flex items-center gap-1.5 ${passwordCriteria.length ? 'text-green-600 font-medium' : ''}`}>{passwordCriteria.length ? <Check size={12} /> : <div className="w-3 h-3 rounded-full border border-gray-300" />} 8+ Characters</div>
+                          <div className={`flex items-center gap-1.5 ${passwordCriteria.number ? 'text-green-600 font-medium' : ''}`}>{passwordCriteria.number ? <Check size={12} /> : <div className="w-3 h-3 rounded-full border border-gray-300" />} Number</div>
+                          <div className={`flex items-center gap-1.5 ${passwordCriteria.upper ? 'text-green-600 font-medium' : ''}`}>{passwordCriteria.upper ? <Check size={12} /> : <div className="w-3 h-3 rounded-full border border-gray-300" />} Uppercase</div>
+                          <div className={`flex items-center gap-1.5 ${passwordCriteria.special ? 'text-green-600 font-medium' : ''}`}>{passwordCriteria.special ? <Check size={12} /> : <div className="w-3 h-3 rounded-full border border-gray-300" />} Special</div>
+                      </div>
+                  </div>
+              )}
+            </div>
+
+            <button type="submit" disabled={loading} className="w-full bg-gray-900 text-white py-4 rounded-xl font-bold text-lg hover:bg-orange-600 transition-all shadow-lg shadow-orange-200 flex items-center justify-center gap-2 transform active:scale-95">
+              {loading ? <><Loader2 className="animate-spin h-5 w-5" /> Creating Account...</> : (from ? 'Sign Up & Continue Order' : 'Sign Up')}
+            </button>
+          </form>
+          
+          <p className="mt-8 text-center text-gray-600">
+            Already have an account? <Link to="/login" state={{ from }} className="text-orange-600 font-bold hover:underline">Log in here</Link>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+export default CustomerRegister;

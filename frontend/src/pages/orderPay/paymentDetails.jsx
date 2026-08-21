@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { useLocation, useNavigate } from 'react-router-dom';
 import {
   FiArrowLeft, FiShoppingCart, FiMapPin,
@@ -6,6 +6,9 @@ import {
 } from 'react-icons/fi';
 import { BiStore } from 'react-icons/bi';
 import mapService from '../../services/mapService';
+import { customerAPI } from '../../services/api';
+import LocationPicker from '../../components/map/LocationPicker';
+import { useAuth } from '../../context/AuthContext';
 // We keep this import, but we will add a backup manual check
 import { useLocation as useLocationContext } from '../../context/LocationContext';
 
@@ -35,14 +38,57 @@ export default function PaymentDetails() {
   const navigate = useNavigate();
   const location = useLocation();
   
-  // 1. Try to get location from Context first
-  const { location: contextLocation } = useLocationContext() || {};
+  // 1. Try to get location from Context first (set by the map/landing page).
+  const { userLocation } = useLocationContext() || {};
 
   const { cart = [], vendor = {}, landmark = '' } = location.state || {};
 
+  const { user } = useAuth();
   const [loading, setLoading] = useState(false);
   const [phoneNumber, setPhoneNumber] = useState("");
   const [deliveryLocation, setDeliveryLocation] = useState(landmark || "");
+
+  // --- saved addresses ---
+  const [addresses, setAddresses] = useState([]);
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    customerAPI.getAddresses()
+      .then((res) => {
+        if (cancelled) return;
+        const list = res.data.addresses || [];
+        setAddresses(list);
+        // Prefill with the default only if the user hasn't typed anything yet.
+        const preferred = list.find((a) => a.is_default);
+        if (preferred && !landmark) setDeliveryLocation(preferred.details);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [user, landmark]);
+
+  // --- promo code ---
+  const [pickedPoint, setPickedPoint] = useState(null);   // { lat, lon }
+  const [showPicker, setShowPicker] = useState(false);
+  const [promoInput, setPromoInput] = useState('');
+  const [promo, setPromo] = useState(null);      // { code, discount, total }
+  const [promoError, setPromoError] = useState('');
+  const [promoBusy, setPromoBusy] = useState(false);
+
+  const applyPromo = async () => {
+    const code = promoInput.trim().toUpperCase();
+    if (!code) return;
+    setPromoBusy(true);
+    setPromoError('');
+    try {
+      const { data } = await customerAPI.previewPromo(code, vendor.id, subtotal);
+      setPromo(data);
+    } catch (err) {
+      setPromo(null);
+      setPromoError(err.response?.data?.error || 'That code did not work.');
+    } finally {
+      setPromoBusy(false);
+    }
+  };
 
   const calculateFees = () => {
     const deliveryFee = 0; 
@@ -52,7 +98,9 @@ export default function PaymentDetails() {
     return { subtotal, deliveryFee, serviceFee, grandTotal };
   };
 
-  const { subtotal, deliveryFee, serviceFee, grandTotal } = calculateFees();
+  const { subtotal, deliveryFee, serviceFee, grandTotal: rawTotal } = calculateFees();
+  const discount = promo?.discount || 0;
+  const grandTotal = Math.max(0, rawTotal - discount);
 
   // --- NEW: Helper to force-get GPS if Context failed ---
   const getManualLocation = () => {
@@ -89,8 +137,9 @@ export default function PaymentDetails() {
 
     try {
       // --- CRITICAL FIX: Resolve Location Logic ---
-      let finalLat = contextLocation?.lat;
-      let finalLng = contextLocation?.lng;
+      // A pin the customer placed deliberately beats a passive GPS reading.
+      let finalLat = pickedPoint?.lat ?? userLocation?.lat;
+      let finalLng = pickedPoint?.lon ?? userLocation?.lon;
 
       // If Context location is missing, FORCE a manual check
       if (!finalLat || !finalLng) {
@@ -111,12 +160,13 @@ export default function PaymentDetails() {
 
       const response = await mapService.initiatePayment(
         vendor.id,
-        grandTotal,
+        subtotal,
         `+254${phoneNumber}`,
         cart,
         deliveryLocation,
         finalLat, // Correct Latitude
-        finalLng  // Correct Longitude
+        finalLng, // Correct Longitude
+        promo?.code
       );
 
       navigate('/payment-success', {
@@ -243,6 +293,20 @@ export default function PaymentDetails() {
             </h3>
             
             <div className="bg-orange-50 border border-orange-100 rounded-xl p-4">
+                {addresses.length > 0 && (
+                  <div className="mb-3 flex flex-wrap gap-1.5">
+                    {addresses.map((a) => (
+                      <button key={a.id} type="button"
+                        onClick={() => setDeliveryLocation(a.details)}
+                        className={`rounded-full px-3 py-1.5 text-[11.5px] font-bold transition-all ${
+                          deliveryLocation === a.details
+                            ? 'bg-orange-600 text-white'
+                            : 'bg-white border border-orange-200 text-gray-600 hover:border-orange-400'}`}>
+                        {a.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-2">
                     Address / Landmark
                 </label>
@@ -253,8 +317,29 @@ export default function PaymentDetails() {
                     placeholder="Enter delivery details (e.g. Building, Floor)"
                     className="w-full bg-white border border-orange-200 text-gray-900 text-sm rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-orange-500 outline-none block p-2.5 transition-all"
                 />
+                <button type="button" onClick={() => setShowPicker((v) => !v)}
+                    className="mt-3 w-full py-2 rounded-lg border border-orange-200 bg-white text-xs font-bold text-gray-700 hover:border-orange-400 transition-colors">
+                    {showPicker ? 'Hide map' : pickedPoint ? 'Change the pin on the map' : 'Pin the exact spot on a map'}
+                </button>
+
+                {showPicker && (
+                  <div className="mt-3">
+                    <LocationPicker
+                      height={230}
+                      label="Where should the vendor meet you?"
+                      onChange={(p) => {
+                        setPickedPoint(p);
+                        if (!deliveryLocation.trim() && p.address) setDeliveryLocation(p.address);
+                      }}
+                    />
+                  </div>
+                )}
+
                 <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
-                    <FiShield size={12} className="text-orange-400" /> Your Vendor will use this to find you.
+                    <FiShield size={12} className="text-orange-400" />
+                    {pickedPoint
+                      ? 'Pin set — your vendor will navigate straight to it.'
+                      : 'Your vendor will use this to find you.'}
                 </p>
             </div>
           </div>
@@ -300,6 +385,34 @@ export default function PaymentDetails() {
                   <span>Service Fee</span>
                   <span>KES {serviceFee}</span>
                 </div>
+                {discount > 0 && (
+                  <div className="flex justify-between font-semibold text-green-600">
+                    <span>Discount ({promo.code})</span>
+                    <span>- KES {discount}</span>
+                  </div>
+                )}
+
+                <div className="pt-1">
+                  <div className="flex gap-2">
+                    <input
+                      value={promoInput}
+                      onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                      placeholder="Promo code"
+                      className="flex-1 min-w-0 px-3 py-2 bg-white border border-orange-200 rounded-lg text-sm font-bold tracking-wider uppercase focus:outline-none focus:ring-2 focus:ring-orange-500"
+                    />
+                    <button type="button" onClick={applyPromo} disabled={promoBusy || !promoInput.trim()}
+                      className="shrink-0 px-4 py-2 rounded-lg bg-gray-900 text-white text-xs font-bold hover:bg-orange-600 disabled:opacity-50 transition-colors">
+                      {promoBusy ? '...' : 'Apply'}
+                    </button>
+                  </div>
+                  {promoError && <p className="mt-1.5 text-xs font-semibold text-red-500">{promoError}</p>}
+                  {promo && (
+                    <p className="mt-1.5 text-xs font-semibold text-green-600">
+                      {promo.percent_off}% off applied.
+                    </p>
+                  )}
+                </div>
+
                 <div className="flex justify-between text-lg font-bold text-gray-900 pt-3 border-t border-orange-100">
                   <span>Total Amount</span>
                   <span>KES {grandTotal}</span>

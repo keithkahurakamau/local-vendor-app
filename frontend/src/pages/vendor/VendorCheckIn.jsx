@@ -5,9 +5,11 @@ import {
   ShoppingBag, Plus, Upload, Trash2, Save, Loader2, Pencil, X, ArrowLeft
 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, useMap, useMapEvents } from 'react-leaflet';
+import { originIcon } from '../../components/map/markers';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { vendorAPI } from '../../services/api';
+import { vendorAPI } from '../../services/api'; // Correct import
+import { useAuth } from '../../context/AuthContext'; // NEW: Use Context for Logout
 
 // --- LEAFLET ICON FIX ---
 import icon from 'leaflet/dist/images/marker-icon.png';
@@ -38,6 +40,7 @@ const DraggableMarker = ({ position, setPosition, onDragEnd }) => {
   return position ? (
     <Marker
       position={position}
+      icon={originIcon()}
       draggable={true}
       eventHandlers={{
         dragend: (e) => {
@@ -52,6 +55,7 @@ const DraggableMarker = ({ position, setPosition, onDragEnd }) => {
 
 const VendorCheckIn = () => {
   const navigate = useNavigate();
+  const { logout } = useAuth(); // Use Auth Context
 
   // --- STATE ---
   const [isOpen, setIsOpen] = useState(false);
@@ -80,9 +84,17 @@ const VendorCheckIn = () => {
     const fetchStatus = async () => {
         try {
             const userStr = localStorage.getItem('user');
-            if (!userStr) return; 
+            // Basic check if logged in (token presence handled by api interceptor)
+            if (!userStr) {
+                // Double check if token exists standalone
+                if(!localStorage.getItem('token')) return;
+            }
 
+            // This calls GET /api/vendor/status
+            // The interceptor in api.js will attach the token
             const response = await vendorAPI.getVendorStatus();
+            
+            // NOTE: response is the Axios object, so we access .data
             const { is_open, remaining_seconds, address: savedAddress, menu_items } = response.data;
 
             const seconds = parseInt(remaining_seconds, 10) || 0;
@@ -106,14 +118,15 @@ const VendorCheckIn = () => {
         } catch (error) {
             console.error("Failed to fetch status:", error);
             if (error.response && (error.response.status === 401 || error.response.status === 422)) {
-                localStorage.removeItem('user');
+                // Token invalid
+                logout(); // Clear context
                 navigate('/vendor/login');
             }
         }
     };
 
     fetchStatus();
-  }, [navigate]);
+  }, [navigate, logout]);
 
   // --- 2. TIMER LOGIC ---
   useEffect(() => {
@@ -143,13 +156,36 @@ const VendorCheckIn = () => {
   // --- 3. STATUS CHANGE ---
   const handleStatusChange = async (targetStatus) => {
       if (targetStatus === false) {
-          if (window.confirm("Are you sure you want to close? You will disappear from the map.")) {
-              try {
-                  await vendorAPI.closeVendor();
-                  setIsOpen(false);
-                  setRemainingSeconds(0);
-              } catch (error) {
-                  console.error("Error closing:", error);
+          if (!window.confirm("Close up? You'll disappear from the map.")) return;
+          try {
+              await vendorAPI.closeVendor();
+              setIsOpen(false);
+              setRemainingSeconds(0);
+          } catch (error) {
+              // The server refuses to close while paid orders are still unfinished,
+              // because the customer has already been charged. Make the vendor
+              // acknowledge exactly who they would be stranding.
+              const data = error.response?.data;
+              if (error.response?.status === 409 && data?.outstanding) {
+                  const list = (data.orders || [])
+                      .map((o) => `  • ${o.order_number} — ${o.status} — KES ${o.amount} (${o.customer_phone})`)
+                      .join('\n');
+                  const proceed = window.confirm(
+                      `You have ${data.outstanding} paid order(s) still waiting:\n\n${list}\n\n` +
+                      `These customers have already paid. Close anyway and notify them?`
+                  );
+                  if (!proceed) return;
+                  try {
+                      const forced = await vendorAPI.closeVendor(true);
+                      setIsOpen(false);
+                      setRemainingSeconds(0);
+                      const n = forced.data?.customers_notified ?? 0;
+                      if (n) alert(`Closed. ${n} customer(s) have been emailed.`);
+                  } catch (e) {
+                      alert('Could not close. Please try again.');
+                  }
+              } else {
+                  alert('Could not close. Please try again.');
               }
           }
       } else {
@@ -204,7 +240,6 @@ const VendorCheckIn = () => {
   };
 
   const handleReverseGeocode = async (lat, lng) => {
-    // Update numeric Lat/Lon immediately
     setPosition({ lat, lng });
     try {
       const response = await fetch(
@@ -341,6 +376,11 @@ const VendorCheckIn = () => {
     }
   };
 
+  const handleLogout = () => {
+      logout();
+      window.location.href = '/'; // Hard redirect to clear everything
+  };
+
   return (
     <div className="min-h-screen bg-orange-50/50 pb-20 font-sans">
       <nav className="bg-white border-b border-gray-200 sticky top-0 z-40 px-6 py-4 flex items-center justify-between shadow-sm">
@@ -355,10 +395,7 @@ const VendorCheckIn = () => {
           <button onClick={() => navigate('/vendor/orders')} className="flex items-center gap-2 text-sm font-medium text-orange-600 hover:text-orange-700 hover:bg-orange-50 px-3 py-2 rounded-lg transition-colors">
             <ShoppingBag className="h-4 w-4" /> View Orders
           </button>
-          <button onClick={() => {
-              localStorage.removeItem('user'); 
-              navigate('/vendor/login');
-          }} className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg transition-colors">
+          <button onClick={handleLogout} className="flex items-center gap-2 text-sm font-medium text-gray-600 hover:text-red-600 hover:bg-red-50 px-3 py-2 rounded-lg transition-colors">
             <LogOut className="h-4 w-4" /> Logout
           </button>
         </div>
@@ -374,92 +411,107 @@ const VendorCheckIn = () => {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-4 space-y-8">
         
         {/* STATUS CARD */}
-        <section className="bg-white rounded-3xl shadow-sm border border-orange-100 p-6 sm:p-8">
-          <div className="flex items-start justify-between mb-6">
+        <section className="panel p-5 sm:p-7">
+          <div className="mb-5 flex items-start justify-between gap-3">
             <div className="flex items-start gap-4">
-                <Clock className="h-6 w-6 text-orange-600 mt-1" />
+                <Clock className="mt-0.5 h-5 w-5 shrink-0 text-primary" />
                 <div>
-                <h2 className="text-lg font-bold text-gray-900">Vendor Status</h2>
-                <p className="text-sm text-gray-500">Auto-closes in <span className="font-bold text-orange-600">{formatTime(remainingSeconds)}</span> if active.</p>
+                  <h2 className="font-display text-[16px] font-bold text-text">Your broadcast</h2>
+                  <p className="mt-0.5 text-[12.5px] text-text-lighter">
+                    {isOpen && remainingSeconds > 0
+                      ? <>Closes in <span className="tabular font-bold text-primary">{formatTime(remainingSeconds)}</span> unless you check in again.</>
+                      : "You are off the map right now."}
+                  </p>
                 </div>
             </div>
             {isOpen && remainingSeconds > 0 && (
-                <span className="animate-pulse bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-bold">
-                    LIVE NOW
+                <span className="chip-live flex shrink-0 items-center gap-1.5 px-2.5 py-1 text-[9.5px]">
+                  <span className="h-1.5 w-1.5 animate-breathe rounded-full bg-success" />
+                  Live now
                 </span>
             )}
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <label className={`flex items-center p-4 border-2 rounded-2xl cursor-pointer transition-all ${isOpen ? 'border-green-500 bg-green-50 shadow-md' : 'border-gray-200 opacity-50'}`}>
-              <input 
-                type="radio" 
-                name="status" 
-                checked={isOpen} 
-                onChange={() => handleStatusChange(true)} 
-                className="h-5 w-5 text-green-600" 
-              />
-              <span className="ml-3 font-bold text-gray-900">Open for Business</span>
+            <label className={`flex cursor-pointer items-center gap-3 rounded-2xl border p-4 transition-all ${
+              isOpen ? 'border-success/50 bg-success/8' : 'border-text/10 bg-white/40 opacity-60 hover:opacity-100'}`}>
+              <input type="radio" name="status" checked={isOpen}
+                onChange={() => handleStatusChange(true)} className="sr-only" />
+              <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all ${
+                isOpen ? 'border-success bg-success' : 'border-neutral-dark'}`}>
+                {isOpen && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
+              </span>
+              <span className="text-[13.5px] font-bold text-text">Open for business</span>
             </label>
-            <label className={`flex items-center p-4 border-2 rounded-2xl cursor-pointer transition-all ${!isOpen ? 'border-red-500 bg-red-50 shadow-md' : 'border-gray-200 opacity-50'}`}>
-              <input 
-                type="radio" 
-                name="status" 
-                checked={!isOpen} 
-                onChange={() => handleStatusChange(false)} 
-                className="h-5 w-5 text-red-600" 
-              />
-              <span className="ml-3 font-bold text-gray-900">Closed for Business</span>
+            <label className={`flex cursor-pointer items-center gap-3 rounded-2xl border p-4 transition-all ${
+              !isOpen ? 'border-warning/50 bg-warning/8' : 'border-text/10 bg-white/40 opacity-60 hover:opacity-100'}`}>
+              <input type="radio" name="status" checked={!isOpen}
+                onChange={() => handleStatusChange(false)} className="sr-only" />
+              <span className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all ${
+                !isOpen ? 'border-warning bg-warning' : 'border-neutral-dark'}`}>
+                {!isOpen && <span className="h-1.5 w-1.5 rounded-full bg-white" />}
+              </span>
+              <span className="text-[13.5px] font-bold text-text">Closed for business</span>
             </label>
           </div>
         </section>
 
         {/* LOCATION SECTION */}
-        <section className={`bg-white rounded-3xl shadow-sm border border-orange-100 p-6 sm:p-8 transition-opacity duration-300 ${!isOpen ? 'opacity-80' : ''}`}>
-          <h2 className="text-lg font-bold text-gray-900 mb-6">Current Location</h2>
+        <section className={`panel p-5 sm:p-7 transition-opacity duration-300 ${!isOpen ? 'opacity-80' : ''}`}>
+          <div className="mb-1 flex items-center gap-2">
+            <MapPin size={16} className="text-primary" />
+            <h2 className="font-display text-[16px] font-bold text-text">Where you're set up</h2>
+          </div>
+          <p className="mb-5 text-[12.5px] text-text-lighter">
+            Drag the pin or tap the map — customers navigate straight to this spot.
+          </p>
           
           <div className="flex flex-col sm:flex-row gap-4 mb-4">
             <div className="flex-1 relative">
-              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-orange-500" />
+              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-primary" />
               <input
                 type="text"
                 value={address}
                 onChange={handleAddressChange}
                 placeholder="Search for location..."
-                className="w-full pl-10 pr-4 py-3 border-2 border-orange-300 rounded-xl bg-orange-50 text-base font-semibold text-gray-800 focus:ring-2 focus:ring-orange-500 outline-none"
+                className="field w-full py-3 pl-10 pr-9 text-[14px] font-semibold"
               />
               {isSearching && <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-orange-500" />}
             </div>
-            <button onClick={handleUpdateGPS} disabled={isLocating} className="px-6 py-3 bg-white border border-orange-200 text-orange-700 font-bold rounded-xl hover:bg-orange-50 flex items-center gap-2">
-              {isLocating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Navigation className="h-4 w-4" />} Update GPS
+            <button onClick={handleUpdateGPS} disabled={isLocating}
+              className="btn-ghost flex shrink-0 items-center justify-center gap-2 px-5 py-3 text-[13px] disabled:opacity-60">
+              {isLocating ? <Loader2 className="h-4 w-4 animate-spin" /> : <Navigation className="h-4 w-4 text-primary" />}
+              {isLocating ? 'Locating…' : 'Use my GPS'}
             </button>
           </div>
 
-          {/* --- REQUIREMENT: Visual confirmation of coordinates --- */}
-          <div className="mb-4 flex items-center gap-4 text-xs font-mono text-gray-500 bg-gray-50 p-2 rounded-lg border border-gray-100">
-             <div className="flex items-center gap-2">
-                <span className="font-bold text-gray-700">LAT:</span> {position.lat.toFixed(6)}
-             </div>
-             <div className="w-px h-4 bg-gray-300"></div>
-             <div className="flex items-center gap-2">
-                <span className="font-bold text-gray-700">LNG:</span> {position.lng.toFixed(6)}
-             </div>
+          <div className="tabular mb-3 flex items-center gap-3 rounded-lg border border-text/8 bg-white/60 px-3 py-2 text-[11px] text-text-lighter">
+             <span><span className="font-bold text-text-light">LAT</span> {position.lat.toFixed(6)}</span>
+             <span className="h-3 w-px bg-neutral" />
+             <span><span className="font-bold text-text-light">LNG</span> {position.lng.toFixed(6)}</span>
           </div>
 
-          <div className="h-64 w-full rounded-2xl overflow-hidden border-2 border-orange-100 relative z-0">
-             <MapContainer center={position} zoom={15} style={{ height: '100%', width: '100%' }}>
-                <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+          <div className="relative z-0 h-72 w-full overflow-hidden rounded-2xl border border-text/10">
+             <MapContainer center={position} zoom={16} zoomControl={false} style={{ height: '100%', width: '100%' }}>
+                <TileLayer
+                  url="https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png"
+                  attribution="&copy; OpenStreetMap &copy; CARTO"
+                />
                 <MapUpdater center={position} />
                 <DraggableMarker position={position} setPosition={setPosition} onDragEnd={handleReverseGeocode} />
              </MapContainer>
+             <div className="pointer-events-none absolute inset-x-0 top-2.5 z-[500] flex justify-center px-3">
+               <span className="panel px-3 py-1.5 text-[10.5px] font-bold text-text-light">
+                 Tap or drag the pin to your exact spot
+               </span>
+             </div>
           </div>
         </section>
 
         {/* MENU SECTION */}
-        <section className={`bg-white rounded-3xl shadow-sm border border-orange-100 p-6 sm:p-8`}>
-          {/* ... (Menu section remains unchanged) ... */}
-          <div className="flex items-center justify-between mb-6">
-            <h2 className="text-lg font-bold text-gray-900">Menu Update</h2>
-            <span className="text-xs text-orange-600 bg-orange-50 px-2 py-1 rounded-md">Live Preview</span>
+        <section className="panel p-5 sm:p-7">
+          <div className="mb-5 flex items-center justify-between gap-3">
+            <h2 className="font-display text-[16px] font-bold text-text">Today&apos;s menu</h2>
+            <span className="chip-dim px-2.5 py-1 text-[9.5px]">Live preview</span>
           </div>
 
           <div className="space-y-4 mb-8">
@@ -533,7 +585,7 @@ const VendorCheckIn = () => {
         </section>
 
         <div className="pb-10 space-y-4">
-          <button onClick={handleBroadcast} disabled={isBroadcasting || menuItems.length === 0} className={`w-full py-5 bg-gray-900 text-white rounded-2xl font-bold text-lg shadow-xl hover:shadow-2xl transition-all duration-300 flex items-center justify-center gap-3 ${isBroadcasting ? 'opacity-70' : 'hover:bg-orange-600'}`}>
+          <button onClick={handleBroadcast} disabled={isBroadcasting || menuItems.length === 0} className={`btn-ember flex w-full items-center justify-center gap-3 py-4 text-[16px] ${isBroadcasting ? 'opacity-70' : ''}`}>
             {isBroadcasting ? <><Loader2 className="h-6 w-6 animate-spin" /> Broadcasting...</> : <><Save className="h-6 w-6" /> Broadcast Location & Menu</>}
           </button>
         </div>

@@ -1,0 +1,55 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Read",
+      "Bash(ls *)",
+      "Bash(cat *)",
+      "Bash(head *)",
+      "Bash(tail *)",
+      "Bash(wc *)",
+      "Bash(grep *)",
+      "Bash(rg *)",
+      "Bash(find *)",
+      "Bash(tree *)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+      "Bash(git branch *)",
+      "Bash(git ls-files *)",
+      "Bash(git blame *)",
+      "Bash(git stash list *)",
+      "Bash(npm run lint)",
+      "Bash(npm run build)",
+      "Bash(npm ls *)",
+      "Bash(pytest *)",
+      "Bash(python -m pytest *)",
+      "Bash(python -c *)",
+      "Bash(flask db migrate *)",
+      "Bash(flask db current *)",
+      "Bash(flask db history *)",
+      "Bash(curl -s http://localhost:5000/*)",
+      "Bash(curl -s http://127.0.0.1:5000/*)"
+    ],
+    "ask": [
+      "Bash(npm install *)",
+      "Bash(pip install *)",
+      "Bash(flask db upgrade *)",
+      "Bash(flask db downgrade *)",
+      "Bash(python seed.py)",
+      "Bash(git push *)",
+      "Bash(git commit *)",
+      "Bash(gh pr *)"
+    ],
+    "deny": [
+      "Read(./backend/.env)",
+      "Read(./frontend/.env)",
+      "Bash(rm -rf *)",
+      "Bash(git reset --hard *)",
+      "Bash(git clean -fd *)",
+      "Bash(dropdb *)",
+      "Bash(psql * -c DROP *)"
+    ]
+  }
+}

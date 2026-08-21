@@ -1,719 +1,519 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, useReducer } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { MapContainer, TileLayer, Marker, Popup, useMapEvents, useMap, ZoomControl } from 'react-leaflet';
-import { FiSearch, FiMapPin, FiShoppingCart, FiClock, FiTruck, FiGrid, FiMap, FiArrowRight, FiNavigation, FiAlertCircle, FiMenu, FiX, FiXCircle } from 'react-icons/fi';
-import { BiStore } from 'react-icons/bi';
-import 'leaflet/dist/leaflet.css';
-import L from 'leaflet';
+import {
+  Search, Navigation, Store, Clock, MapPin, ArrowRight, Loader2, X,
+  LayoutGrid, Map as MapIcon, Menu, LogOut, User, ShieldCheck, ChevronDown,
+} from 'lucide-react';
+
+import LiveMap from '../../components/map/LiveMap';
+import AreaBar from '../../components/map/AreaBar';
+import CartReminder from '../../components/common/CartReminder';
+import NotificationBell from '../../components/common/NotificationBell';
+import { useLiveLocation } from '../../hooks/useLiveLocation';
 import { useLocation } from '../../context/LocationContext';
+import { useAuth } from '../../context/AuthContext';
 import mapService from '../../services/mapService';
+import Stars from '../../components/common/Stars';
+import FavouriteButton from '../../components/common/FavouriteButton';
+import {
+  secondsLeft, urgency, formatCountdown, formatDistance, walkMinutes, URGENCY_COLOR,
+} from '../../lib/geo';
 
-// --- SMOOTH MAP UPDATER ---
-const MapUpdater = ({ center }) => {
-  const map = useMap();
+const NAIROBI = { lat: -1.2864, lon: 36.8172 };
+const RADIUS_M = 5000;
+
+const CATEGORIES = ['All', 'Nyama Choma', 'Pilau', 'Chapati', 'Samosa', 'Chips', 'Fish'];
+
+/* ------------------------------------------------------------------ pieces */
+
+function Countdown({ updated, compact = false }) {
+  const [, tick] = useReducer((n) => n + 1, 0);
   useEffect(() => {
-    if (center) {
-      map.flyTo(center, 15); 
-    }
-  }, [center, map]);
-  return null;
-};
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, []);
+  const left = secondsLeft(updated);
 
-// --- SAFE IMAGE COMPONENT ---
-const VendorImage = ({ src, alt, className }) => {
-    const [hasError, setHasError] = useState(false);
-
-    if (hasError || !src) {
-        return (
-            <div className={`bg-orange-50 flex flex-col items-center justify-center text-orange-200 ${className}`}>
-                <BiStore className="text-2xl opacity-50" />
-            </div>
-        );
-    }
-
-    return (
-        <img 
-            src={src} 
-            alt={alt} 
-            className={className}
-            onError={() => setHasError(true)}
-        />
-    );
-};
-
-// --- LIVE TIMER COMPONENT ---
-const VendorTimer = ({ updatedAt }) => {
-  const [timeLeft, setTimeLeft] = useState("");
-  const [isExpired, setIsExpired] = useState(false);
-
-  useEffect(() => {
-    const calculateTime = () => {
-      if (!updatedAt) return;
-      
-      const lastUpdate = new Date(updatedAt).getTime();
-      const expiresAt = lastUpdate + (3 * 60 * 60 * 1000); // +3 Hours
-      const now = new Date().getTime();
-      const diff = expiresAt - now;
-
-      if (diff <= 0) {
-        setIsExpired(true);
-        setTimeLeft("Closing soon");
-      } else {
-        const hours = Math.floor(diff / (1000 * 60 * 60));
-        const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-        const seconds = Math.floor((diff % (1000 * 60)) / 1000);
-        setTimeLeft(`${hours}h ${minutes}m ${seconds}s`);
-      }
-    };
-
-    calculateTime();
-    const timer = setInterval(calculateTime, 1000);
-    return () => clearInterval(timer);
-  }, [updatedAt]);
-
+  const { hex, label } = URGENCY_COLOR[urgency(left)];
   return (
-    <span className={`text-[10px] font-bold flex items-center gap-1 px-1.5 py-0.5 rounded ${isExpired ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-700'}`}>
-       <FiClock className={isExpired ? "" : "animate-pulse"} /> 
-       {timeLeft}
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full font-extrabold uppercase tracking-widest ${
+        compact ? 'px-2 py-0.5 text-[9px]' : 'px-2.5 py-1 text-[10px]'}`}
+      style={{ background: `${hex}1A`, color: hex, border: `1px solid ${hex}4D` }}
+    >
+      <span className="h-1.5 w-1.5 rounded-full animate-breathe" style={{ background: hex }} />
+      <span className="tabular">{left > 0 ? formatCountdown(left) : label}</span>
     </span>
   );
-};
+}
 
-// --- Draggable Marker ---
-const DraggableMarker = ({ position, setPosition, onDragEnd }) => {
-  useMapEvents({
-    click(e) {
-      setPosition(e.latlng);
-      if (onDragEnd) onDragEnd(e.latlng.lat, e.latlng.lng);
-    }
-  });
+function VendorCard({ vendor, onOpen }) {
+  const items = Array.isArray(vendor.menu) ? vendor.menu : [];
+  const mins = walkMinutes(vendor.distance);
 
-  return position ? (
-    <Marker
-      position={position}
-      draggable={true}
-      eventHandlers={{
-        dragend: (e) => {
-          const newPos = e.target.getLatLng();
-          setPosition(newPos);
-          if (onDragEnd) onDragEnd(newPos.lat, newPos.lng);
-        }
-      }}
-      icon={userIcon}
+  return (
+    <button
+      onClick={() => onOpen(vendor)}
+      className="panel group flex w-full flex-col overflow-hidden text-left transition-all duration-300 hover:-translate-y-1.5"
     >
-        <Popup>You (Customer) - Drag to find vendors</Popup>
-    </Marker>
-  ) : null;
-};
-
-// --- Leaflet Icons ---
-delete L.Icon.Default.prototype._getIconUrl;
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-});
-
-const userIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-blue.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
-});
-
-const vendorIcon = new L.Icon({
-  iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-2x-orange.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
-});
-
-const LandingPage = () => {
-    const navigate = useNavigate();
-    const { updateLocation } = useLocation();
-    
-    // --- REFS ---
-    const mapRef = useRef(null);
-    const contentRef = useRef(null);
-    
-    // --- STATE ---
-    const DEFAULT_LAT = -1.2864;
-    const DEFAULT_LNG = 36.8172;
-
-    const [searchQuery, setSearchQuery] = useState('');
-    const [activeCategory, setActiveCategory] = useState('all');
-    const [viewMode, setViewMode] = useState('grid');
-    const [vendors, setVendors] = useState([]);
-    const [loading, setLoading] = useState(true);
-    const [locationLoading, setLocationLoading] = useState(false);
-    const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
-
-    // Map State
-    const initialCenter = useMemo(() => [DEFAULT_LAT, DEFAULT_LNG], []); 
-    const [mapCenter, setMapCenter] = useState([DEFAULT_LAT, DEFAULT_LNG]);
-    const [manualLocation, setManualLocation] = useState({ lat: DEFAULT_LAT, lng: DEFAULT_LNG });
-    const [radius] = useState(5000); 
-    
-    const [error, setError] = useState(null);
-    const [searchLoading, setSearchLoading] = useState(false);
-
-    const popularCategories = [
-        { id: 'all', name: 'All' },
-        { id: 'nyama-choma', name: 'Nyama Choma' },
-        { id: 'pilau', name: 'Pilau' },
-        { id: 'chapati', name: 'Chapati' },
-        { id: 'ugali-fish', name: 'Ugali Fish' },
-        { id: 'pizza', name: 'Pizza' }
-    ];
-
-    const formatDistance = (distanceKm) => {
-        if (distanceKm === undefined || distanceKm === null) return '';
-        if (distanceKm < 1) {
-            return `${Math.round(distanceKm * 1000)}m`;
-        }
-        return `${distanceKm.toFixed(1)}km`;
-    };
-
-    // --- REUSABLE FETCH FUNCTION ---
-    const fetchNearbyVendors = async (lat, lng) => {
-        setLoading(true);
-        try {
-            const vendorList = await mapService.getNearbyVendors(lat, lng, radius);
-            if (Array.isArray(vendorList)) {
-                setVendors(vendorList);
-            } else {
-                setVendors([]);
-            }
-        } catch (error) {
-            console.error('Error fetching vendors:', error);
-            setError('Failed to load nearby vendors.');
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // --- INITIAL FETCH ---
-    useEffect(() => {
-        if (manualLocation) {
-            fetchNearbyVendors(manualLocation.lat, manualLocation.lng);
-        }
-    }, []); 
-
-    // --- ACTION HANDLERS ---
-    const handleCategoryClick = (id) => setActiveCategory(id);
-    
-    // Clear search and reset to nearby
-    const handleClearSearch = () => { 
-        setSearchQuery(''); 
-        setActiveCategory('all');
-        setError(null);
-        fetchNearbyVendors(manualLocation.lat, manualLocation.lng);
-    };
-
-    const handleViewToggle = (mode) => {
-        if (mode === viewMode) return;
-        setViewMode(mode);
-    };
-
-    const handleScrollToTop = () => {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
-    };
-
-    const handleScrollToMap = () => {
-        setViewMode('map');
-        setTimeout(() => {
-            contentRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }, 100);
-    };
-
-    // --- GEOLOCATION HANDLER ---
-    const handleFindNearby = async () => {
-        setLocationLoading(true);
-        setError(null);
-        setSearchQuery(''); // Reset search when finding nearby
-
-        const geoOptions = {
-            enableHighAccuracy: false, 
-            timeout: 20000,
-            maximumAge: 300000
-        };
-
-        try {
-            navigator.geolocation.getCurrentPosition(
-                async (position) => {
-                    const { latitude, longitude } = position.coords;
-                    updateLocation(latitude, longitude);
-                    
-                    setManualLocation({ lat: latitude, lng: longitude });
-                    setMapCenter([latitude, longitude]); 
-                    
-                    await fetchNearbyVendors(latitude, longitude);
-                    setLocationLoading(false);
-                },
-                (err) => {
-                    console.warn("Geolocation warning:", err);
-                    setError('Could not get your location. Please check permissions.');
-                    setLocationLoading(false);
-                },
-                geoOptions
-            );
-        } catch (e) {
-            setError('Failed to initiate location search.');
-            setLocationLoading(false);
-        }
-    };
-
-    const handleDragEnd = async (lat, lng) => {
-        setManualLocation({ lat, lng });
-        updateLocation(lat, lng);
-        // Only fetch nearby if we aren't currently in a "Search" mode, or maybe always refresh
-        await fetchNearbyVendors(lat, lng);
-    };
-
-    // --- SEARCH HANDLER (FIXED) ---
-    const handleAdvancedSearch = async (e) => {
-        e?.preventDefault();
-        
-        if (!searchQuery.trim()) {
-            // If empty, just show nearby
-            handleClearSearch();
-            return;
-        }
-
-        setSearchLoading(true);
-        setError(null);
-
-        try {
-            // Perform Item Search relative to the current pin location
-            const results = await mapService.searchVendors(
-                searchQuery, 
-                manualLocation.lat, 
-                manualLocation.lng
-            );
-            
-            if (Array.isArray(results)) {
-                setVendors(results);
-                if (results.length === 0) {
-                    setError(`No vendors found selling "${searchQuery}" nearby.`);
-                }
-            } else {
-                setVendors([]);
-            }
-        } catch (err) {
-            console.error(err);
-            setError('Search failed. Please try again.');
-        } finally {
-            setSearchLoading(false);
-        }
-    };
-
-    // --- FILTERING LOGIC ---
-    const filteredVendors = useMemo(() => {
-        return vendors.filter(vendor => {
-            // Filter 1: Category
-            if (activeCategory !== 'all' && !vendor.categories?.includes(activeCategory)) return false;
-            
-            // NOTE: We do NOT filter by searchQuery string here anymore.
-            // Why? Because the API search (`searchVendors`) already returns vendors that match the food item.
-            // If we filter again here by Vendor Name, we might hide a vendor named "John's Place" that sells "Pizza".
-            
-            return true;
-        });
-    }, [activeCategory, vendors]);
-
-    return (
-        <div className="min-h-screen bg-gradient-to-br from-orange-50 via-white to-orange-50 font-sans text-gray-800 flex flex-col">
-            
-            {/* Navbar */}
-            <nav className="bg-white/90 backdrop-blur-md sticky top-0 z-50 border-b border-orange-100">
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-                    <div className="flex justify-between items-center h-16 relative">
-                        <Link to="/" className="flex items-center gap-2 cursor-pointer">
-                            <div className="bg-orange-600 p-2 rounded-lg shadow-sm">
-                                <BiStore className="text-white text-xl" />
-                            </div>
-                            <span className="text-2xl font-bold tracking-tight text-gray-900">
-                                Hyper<span className="text-orange-600">Local</span>
-                            </span>
-                        </Link>
-
-                        <div className="hidden md:flex items-center gap-4">
-                            <Link to="/vendor/login" className="flex items-center gap-2 text-gray-600 hover:text-orange-600 font-medium transition-colors">
-                                <BiStore /> Vendor Login
-                            </Link>
-                            <Link to="/admin/login" className="bg-gray-900 text-white px-5 py-2 rounded-full font-medium hover:bg-orange-600 transition-all shadow-lg shadow-orange-100/20 active:scale-95">
-                                Admin
-                            </Link>
-                        </div>
-
-                        <div className="md:hidden">
-                            <button 
-                                onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-                                className="p-2 text-gray-600 hover:text-orange-600 bg-orange-50 rounded-lg transition-colors border border-orange-100"
-                            >
-                                {isMobileMenuOpen ? <FiX size={24} /> : <FiMenu size={24} />}
-                            </button>
-                        </div>
-
-                        {isMobileMenuOpen && (
-                            <div className="absolute top-16 right-0 left-0 px-4 md:hidden z-50">
-                                <div className="bg-white/95 backdrop-blur-md border border-orange-100 rounded-2xl shadow-2xl p-4 flex flex-col gap-3 animate-slide-up origin-top">
-                                    <Link 
-                                        to="/vendor/login" 
-                                        className="flex items-center gap-3 p-3 rounded-xl hover:bg-orange-50 text-gray-700 hover:text-orange-700 transition-colors font-medium border border-transparent hover:border-orange-100"
-                                        onClick={() => setIsMobileMenuOpen(false)}
-                                    >
-                                        <div className="bg-orange-100 p-2 rounded-lg text-orange-600">
-                                            <BiStore size={20} />
-                                        </div>
-                                        Vendor Login
-                                    </Link>
-                                    
-                                    <Link 
-                                        to="/admin/login" 
-                                        className="flex items-center gap-3 p-3 rounded-xl hover:bg-gray-100 text-gray-700 hover:text-gray-900 transition-colors font-medium border border-transparent hover:border-gray-200"
-                                        onClick={() => setIsMobileMenuOpen(false)}
-                                    >
-                                        <div className="bg-gray-100 p-2 rounded-lg text-gray-600">
-                                            <FiGrid size={20} />
-                                        </div>
-                                        Admin Login
-                                    </Link>
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            </nav>
-
-            {/* Hero Section */}
-            <div className="relative h-[550px] flex items-center justify-center">
-                <div className="absolute inset-0 z-0">
-                    <img src="/images/hero2.jpg" alt="Kenyan Food" className="w-full h-full object-cover" />
-                    <div className="absolute inset-0 bg-gradient-to-b from-black/80 via-black/60 to-orange-50"></div>
-                </div>
-                <div className="relative z-10 text-center px-4 max-w-4xl mx-auto mt-[-40px]">
-                    <span className="inline-block py-1 px-3 rounded-full bg-orange-500/20 border border-orange-500 text-orange-300 text-sm font-semibold mb-6 backdrop-blur-sm shadow-sm">
-                        Your neighborhood marketplace
-                    </span>
-                    <h1 className="text-5xl md:text-7xl font-extrabold text-white leading-tight mb-6 drop-shadow-sm">
-                        Hyper Local Flavors, <br />
-                        <span className="text-transparent bg-clip-text bg-gradient-to-r from-orange-400 to-red-500">Delivered Fast.</span>
-                    </h1>
-                </div>
-            </div>
-
-            {/* Search Container */}
-            <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 relative z-20 -mt-24">
-                <div className="bg-white rounded-2xl shadow-2xl shadow-orange-900/10 border border-orange-100 p-6 md:p-8">
-                    <div className="flex flex-col md:flex-row gap-4">
-                        <div className="flex-1 relative">
-                            <FiSearch className="absolute left-4 top-3.5 text-orange-300 text-xl" />
-                            <input
-                                type="text"
-                                placeholder="Search food items (e.g. Pilau, Chapati)..."
-                                className="w-full pl-12 pr-10 py-3 bg-orange-50 border border-orange-100 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500 transition-all placeholder-gray-400"
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                onKeyPress={(e) => e.key === 'Enter' && handleAdvancedSearch()}
-                            />
-                            {/* Clear Button */}
-                            {searchQuery && (
-                                <button 
-                                    onClick={handleClearSearch}
-                                    className="absolute right-3 top-3.5 text-gray-400 hover:text-orange-500 transition-colors"
-                                >
-                                    <FiXCircle size={20} />
-                                </button>
-                            )}
-                        </div>
-                        <button
-                            onClick={handleAdvancedSearch}
-                            disabled={searchLoading}
-                            className={`px-6 py-3 bg-orange-600 text-white rounded-xl font-medium hover:bg-orange-700 transition-all shadow-lg shadow-orange-200 flex items-center justify-center gap-2 ${
-                                searchLoading ? 'opacity-50 cursor-not-allowed' : ''
-                            }`}
-                        >
-                            {searchLoading ? (
-                                <>
-                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                                    <span>Searching...</span>
-                                </>
-                            ) : (
-                                <>
-                                    <FiSearch className="text-lg" />
-                                    <span>Find Food</span>
-                                </>
-                            )}
-                        </button>
-                        
-                        <button
-                            onClick={handleFindNearby}
-                            disabled={locationLoading}
-                            className={`flex items-center justify-center gap-2 px-6 py-3 bg-white border border-gray-200 rounded-xl transition-all text-gray-700 font-medium ${
-                                locationLoading
-                                    ? 'opacity-50 cursor-not-allowed'
-                                    : 'hover:bg-orange-50 hover:border-orange-200 hover:text-orange-700 hover:shadow-md'
-                            }`}
-                        >
-                            {locationLoading ? (
-                                <>
-                                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-orange-500"></div>
-                                    <span>Locating...</span>
-                                </>
-                            ) : (
-                                <>
-                                    <FiNavigation className="text-orange-500" />
-                                    <span>Near Me</span>
-                                </>
-                            )}
-                        </button>
-                    </div>
-                    <div className="mt-6">
-                        <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Popular Categories</p>
-                        <div className="flex flex-wrap gap-2">
-                            {popularCategories.map((cat) => (
-                                <button
-                                    key={cat.id}
-                                    onClick={() => handleCategoryClick(cat.id)}
-                                    className={`px-4 py-2 rounded-full text-sm font-medium transition-all duration-200 border ${activeCategory === cat.id ? 'bg-orange-600 text-white border-orange-600 shadow-lg shadow-orange-200 transform scale-105' : 'bg-white text-gray-600 border-gray-100 hover:border-orange-200 hover:bg-orange-50 hover:text-orange-600'}`}
-                                >
-                                    {cat.name}
-                                </button>
-                            ))}
-                        </div>
-                    </div>
-                </div>
-
-                {error && (
-                    <div className="mt-4 p-4 bg-red-50 border-l-4 border-red-500 rounded-r-xl flex items-center gap-3 shadow-sm animate-fadeIn">
-                        <FiAlertCircle className="text-red-500 text-xl flex-shrink-0" />
-                        <p className="text-red-700 text-sm">{error}</p>
-                        <button onClick={() => setError(null)} className="ml-auto text-red-500 hover:text-red-700 text-xl">×</button>
-                    </div>
-                )}
-            </div>
-
-            {/* Content Area */}
-            <div ref={contentRef} className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 flex-grow w-full">
-                <div className="flex flex-col md:flex-row justify-between items-end mb-10 gap-4">
-                    <div>
-                        <h2 className="text-3xl font-bold text-gray-900">
-                            {searchQuery ? `Search Results for "${searchQuery}"` : "Nearby Local Vendors"}
-                        </h2>
-                        <p className="text-gray-500 mt-2 font-medium">
-                            {filteredVendors.length} spots found within 5km
-                        </p>
-                    </div>
-
-                    <div className="flex items-center">
-                        <div className="bg-orange-50 rounded-full p-1.5 flex items-center relative shadow-inner w-64 h-14 select-none cursor-pointer border border-orange-100">
-                            <div className={`absolute h-[calc(100%-12px)] w-[calc(50%-6px)] bg-white rounded-full shadow-md transform transition-transform duration-500 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${viewMode === 'map' ? 'translate-x-[100%] ml-1.5' : 'translate-x-0'}`}></div>
-                            <div onClick={() => handleViewToggle('grid')} className={`flex-1 relative z-10 flex items-center justify-center gap-2 font-bold text-sm transition-colors duration-300 ${viewMode === 'grid' ? 'text-orange-900' : 'text-gray-500 hover:text-orange-600'}`}>
-                                <FiGrid className="text-lg" /> Grid View
-                            </div>
-                            <div onClick={() => handleViewToggle('map')} className={`flex-1 relative z-10 flex items-center justify-center gap-2 font-bold text-sm transition-colors duration-300 ${viewMode === 'map' ? 'text-orange-900' : 'text-gray-500 hover:text-orange-600'}`}>
-                                <FiMap className="text-lg" /> Map View
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {loading ? (
-                    <div className="text-center py-20">
-                        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-600 mx-auto"></div>
-                        <p className="text-gray-500 mt-4">Finding vendors near you...</p>
-                    </div>
-                ) : viewMode === 'grid' ? (
-                    filteredVendors.length > 0 ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                            {filteredVendors.map((vendor) => (
-                                <div key={vendor.id} className="group bg-white rounded-2xl border border-orange-100 shadow-sm hover:shadow-xl hover:shadow-orange-100/50 hover:border-orange-200 hover:-translate-y-1 transition-all duration-300 overflow-hidden flex flex-col h-full">
-                                    <div className="relative h-56 overflow-hidden">
-                                        <VendorImage src={vendor.image} alt={vendor.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
-                                        <div className={`absolute top-4 right-4 px-3 py-1 rounded-full text-xs font-bold backdrop-blur-md shadow-sm border border-white/20 ${vendor.status === 'Open' ? 'bg-green-500/90 text-white' : 'bg-gray-500/90 text-white'}`}>
-                                            {vendor.status || 'Closed'}
-                                        </div>
-                                    </div>
-                                    <div className="p-6 flex flex-col flex-grow">
-                                        <div className="flex justify-between items-start mb-2">
-                                            <h3 className="text-xl font-bold text-gray-900 line-clamp-1 group-hover:text-orange-600 transition-colors">{vendor.name}</h3>
-                                            <VendorTimer updatedAt={vendor.updated} />
-                                        </div>
-                                        <p className="text-gray-500 text-sm mb-4 line-clamp-2 flex-grow">{vendor.cuisine}</p>
-                                        <div className="flex items-center gap-4 text-sm text-gray-600 mb-6 font-medium">
-                                            <span className="flex items-center gap-1 bg-orange-50 px-2 py-1 rounded text-orange-700 border border-orange-100">
-                                                <FiMapPin /> {formatDistance(vendor.distance)} away
-                                            </span>
-                                            <span className="flex items-center gap-1">
-                                                <FiTruck className="text-orange-500" /> Delivery
-                                            </span>
-                                        </div>
-                                        <button onClick={() => navigate(`/order/${vendor.vendor_id}`, { state: { vendor } })} className="w-full mt-auto bg-gray-900 text-white py-3.5 rounded-xl font-semibold hover:bg-orange-600 transition-all flex items-center justify-center gap-2 shadow-lg shadow-gray-200 group-hover:shadow-orange-200">
-                                            <FiShoppingCart /> Order Now
-                                        </button>
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="text-center py-20 bg-white rounded-2xl border border-dashed border-orange-200 shadow-sm">
-                            <FiSearch className="mx-auto text-4xl text-orange-200 mb-4" />
-                            <h3 className="text-lg font-medium text-gray-900">No vendors found</h3>
-                            <p className="text-gray-500">
-                                {searchQuery ? `We couldn't find any vendor selling "${searchQuery}".` : "Try dragging the map marker to a different location."}
-                            </p>
-                            <button onClick={handleClearSearch} className="mt-4 text-orange-600 font-bold hover:underline">Reset Search</button>
-                        </div>
-                    )
-                ) : (
-                    /* --- MAP VIEW --- */
-                    <div className="bg-white rounded-2xl shadow-xl border border-orange-100 overflow-hidden relative">
-                        <div className="h-[700px] relative w-full">
-                            <MapContainer
-                                center={initialCenter} 
-                                zoom={13}
-                                scrollWheelZoom={true} 
-                                style={{ height: '100%', width: '100%' }}
-                                ref={mapRef}
-                                zoomControl={false}
-                            >
-                                <TileLayer
-                                    url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                                    attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                                />
-                                <ZoomControl position="bottomright" />
-                                <MapUpdater center={mapCenter} />
-                                <DraggableMarker 
-                                    position={manualLocation} 
-                                    setPosition={(pos) => {
-                                        setManualLocation({ lat: pos.lat, lng: pos.lng });
-                                    }}
-                                    onDragEnd={handleDragEnd}
-                                />
-                                {filteredVendors.map((vendor) => (
-                                    (vendor.latitude && vendor.longitude) || (vendor.lat && vendor.lon) ? (
-                                        <Marker
-                                            key={vendor.id}
-                                            position={[
-                                                vendor.latitude || vendor.lat, 
-                                                vendor.longitude || vendor.lon
-                                            ]}
-                                            icon={vendorIcon}
-                                            eventHandlers={{
-                                                mouseover: (e) => e.target.openPopup(),
-                                            }}
-                                        >
-                                            <Popup className="custom-popup" closeButton={false} minWidth={200}>
-                                                <div className="w-52 p-0 -m-1 font-sans">
-                                                    <div className="relative h-28 w-full overflow-hidden rounded-t-lg">
-                                                        <VendorImage 
-                                                            src={vendor.image} 
-                                                            alt={vendor.name} 
-                                                            className="w-full h-full object-cover" 
-                                                        />
-                                                        <div className="absolute top-2 right-2 bg-white/90 px-2 py-0.5 rounded text-[10px] font-bold text-gray-800 shadow-sm border border-orange-100">
-                                                            {formatDistance(vendor.distance)}
-                                                        </div>
-                                                    </div>
-                                                    <div className="p-3 bg-white rounded-b-lg border-t border-orange-50">
-                                                        <h3 className="font-bold text-gray-900 text-sm mb-1 truncate">{vendor.name}</h3>
-                                                        <div className="flex justify-between items-center mb-3">
-                                                            <span className="text-xs text-gray-500">{vendor.cuisine || 'Local Food'}</span>
-                                                            <VendorTimer updatedAt={vendor.updated} />
-                                                        </div>
-                                                        <button 
-                                                            onClick={(e) => {
-                                                                e.stopPropagation(); 
-                                                                navigate(`/order/${vendor.vendor_id}`, { state: { vendor } });
-                                                            }}
-                                                            className="w-full block text-center bg-orange-600 hover:bg-orange-700 text-white text-xs font-bold py-2 rounded transition-colors shadow-md"
-                                                        >
-                                                            View Menu
-                                                        </button>
-                                                    </div>
-                                                </div>
-                                            </Popup>
-                                        </Marker>
-                                    ) : null
-                                ))}
-                            </MapContainer>
-                            <div className="absolute top-4 right-4 bg-white/90 backdrop-blur rounded-lg shadow-lg border border-orange-100 p-3 z-[400]">
-                                <div className="space-y-2">
-                                    <div className="flex items-center gap-2 text-sm">
-                                        <div className="w-3 h-3 bg-blue-500 rounded-full ring-2 ring-blue-100"></div>
-                                        <span>You (Drag to move)</span>
-                                    </div>
-                                    <div className="flex items-center gap-2 text-sm">
-                                        <div className="w-3 h-3 bg-orange-500 rounded-full ring-2 ring-orange-100"></div>
-                                        <span>Vendors (Within 5km)</span>
-                                    </div>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                )}
-            </div>
-
-            {/* Footer */}
-            <footer className="bg-gray-900 text-white pt-20 pb-10 border-t border-gray-800 mt-auto relative overflow-hidden">
-                <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-orange-500 via-red-500 to-orange-500"></div>
-                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10">
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-16">
-                        <div className="space-y-6">
-                            <div className="flex items-center gap-2">
-                                <div className="bg-orange-600 p-2.5 rounded-xl shadow-lg shadow-orange-900/50">
-                                    <BiStore className="text-white text-2xl" />
-                                </div>
-                                <span className="text-3xl font-bold tracking-tight text-white">
-                                    Hyper<span className="text-orange-500">Local</span>
-                                </span>
-                            </div>
-                            <p className="text-gray-400 leading-relaxed max-w-sm">
-                                Empowering local vendors by connecting neighborhoods with their favorite flavors. Fast, fresh, and friendly delivery.
-                            </p>
-                        </div>
-                        <div className="md:pl-10">
-                            <h3 className="text-lg font-bold text-white mb-6">Quick Navigation</h3>
-                            <ul className="space-y-4 text-gray-400">
-                                <li>
-                                    <button onClick={handleScrollToTop} className="hover:text-orange-500 transition-colors flex items-center gap-2 cursor-pointer text-left group">
-                                        <FiArrowRight className="text-sm group-hover:translate-x-1 transition-transform"/> Home
-                                    </button>
-                                </li>
-                                <li>
-                                    <button onClick={handleScrollToMap} className="hover:text-orange-500 transition-colors flex items-center gap-2 cursor-pointer text-left group">
-                                        <FiArrowRight className="text-sm group-hover:translate-x-1 transition-transform"/> Find on Map
-                                    </button>
-                                </li>
-                                <li><button onClick={() => navigate('/vendor/login')} className="hover:text-orange-500 transition-colors flex items-center gap-2 group"><FiArrowRight className="text-sm group-hover:translate-x-1 transition-transform"/> Vendor Login</button></li>
-                            </ul>
-                        </div>
-                        <div className="bg-gray-800 rounded-2xl p-8 border border-gray-700 shadow-xl relative overflow-hidden group hover:border-orange-500/30 transition-colors">
-                            <div className="absolute top-0 right-0 w-32 h-32 bg-orange-500/10 rounded-full blur-3xl -mr-16 -mt-16 transition-all group-hover:bg-orange-500/20"></div>
-                            <h3 className="text-xl font-bold text-white mb-3 relative z-10">Want to be a Vendor?</h3>
-                            <p className="text-gray-400 text-sm mb-6 relative z-10 leading-relaxed">
-                                Join our growing marketplace. Reach more customers and boost your sales by registering your vendor with us today!
-                            </p>
-                            <button 
-                                onClick={() => navigate('/vendor/register')}
-                                className="w-full bg-orange-600 hover:bg-orange-500 text-white font-bold py-3.5 px-6 rounded-xl transition-all hover:shadow-lg hover:shadow-orange-900/20 flex items-center justify-center gap-2 relative z-10 active:scale-95"
-                            >
-                                Register Your Vendor <BiStore className="text-lg" />
-                            </button>
-                        </div>
-                    </div>
-                    <div className="border-t border-gray-800 pt-8 flex flex-col md:flex-row justify-between items-center text-gray-500 text-sm">
-                        <p>© 2025 Hyper Local Vendor. Nairobi, Kenya 🇰🇪</p>
-                    </div>
-                </div>
-            </footer>
+      <div className="relative h-32 shrink-0 overflow-hidden bg-gradient-to-br from-primary/10 via-secondary/12 to-success/10 sm:h-36">
+        {vendor.image ? (
+          <img src={vendor.image} alt="" loading="lazy"
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105" />
+        ) : (
+          <div className="flex h-full items-center justify-center">
+            <Store className="text-primary/25" size={34} />
+          </div>
+        )}
+        <div className="absolute left-3 top-3"><Countdown updated={vendor.updated} compact /></div>
+        <div className="absolute right-3 top-3">
+          <FavouriteButton vendorId={vendor.vendor_id} size={14} />
         </div>
-    );
-};
+        <div className="tabular absolute bottom-3 right-3 rounded-full bg-white/92 px-2 py-0.5 text-[10px] font-bold text-text shadow-sm backdrop-blur">
+          {formatDistance(vendor.distance)}
+        </div>
+      </div>
 
-export default LandingPage;
+      <div className="flex flex-1 flex-col p-4">
+        <h3 className="font-display line-clamp-2 text-[15px] font-bold leading-snug text-text transition-colors group-hover:text-primary">
+          {vendor.name}
+        </h3>
+        <p className="mt-0.5 flex items-center gap-1 text-[11px] font-semibold text-text-lighter">
+          <MapPin size={11} className="text-primary/60" />
+          {mins != null ? `${mins} min walk` : 'Nearby'}
+        </p>
+        <div className="mt-1.5">
+          <Stars rating={vendor.rating} count={vendor.rating_count} />
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {items.slice(0, 3).map((item, i) => (
+            <span key={item.id ?? i}
+              className="rounded-md border border-primary/15 bg-primary/5 px-1.5 py-0.5 text-[10px] font-semibold text-primary-dark">
+              {item.name}
+            </span>
+          ))}
+          {items.length > 3 && (
+            <span className="px-1 py-0.5 text-[10px] font-semibold text-text-lighter">+{items.length - 3}</span>
+          )}
+        </div>
+
+        <div className="mt-auto flex items-center gap-1.5 pt-3 text-[12px] font-bold text-text-lighter transition-colors group-hover:text-primary">
+          View menu <ArrowRight size={13} className="transition-transform group-hover:translate-x-0.5" />
+        </div>
+      </div>
+    </button>
+  );
+}
+
+/* ------------------------------------------------------------------- page */
+
+export default function LandingPage() {
+  const navigate = useNavigate();
+  const { user, logout } = useAuth();
+  const { searchOrigin, isDefaultOrigin, updateLocation } = useLocation();
+  const { location: live, status, refresh } = useLiveLocation({ enabled: false });
+
+  const [vendors, setVendors] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [query, setQuery] = useState('');
+  const [category, setCategory] = useState('All');
+  const [view, setView] = useState('grid');
+  const [origin, setOrigin] = useState(() => ({ lat: searchOrigin.lat, lon: searchOrigin.lon }));
+  const [flyKey, setFlyKey] = useState(0);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const resultsRef = useRef(null);
+
+  // RBAC for navigation. A signed-in customer has no use for vendor sign-up or the
+  // admin door, and showing them invites dead-end clicks into screens they'll be
+  // bounced out of. Anonymous visitors still see everything - that is how a vendor
+  // finds their way in.
+  const isAnonymous = !user;
+  const isCustomer = user?.role === 'customer';
+  const showVendorEntry = isAnonymous;      // vendors are redirected off this page anyway
+  const showAdminEntry = isAnonymous;
+
+  const load = useCallback(async (lat, lon) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const list = await mapService.getNearbyVendors(lat, lon, RADIUS_M);
+      setVendors(Array.isArray(list) ? list : []);
+    } catch {
+      setError('Could not reach the server.');
+      setVendors([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(searchOrigin.lat, searchOrigin.lon); }, [load]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (!live) return;
+    setOrigin({ lat: live.lat, lon: live.lon });
+    updateLocation(live.lat, live.lon, { source: 'gps' });
+    setFlyKey((k) => k + 1);
+    load(live.lat, live.lon);
+  }, [live?.lat, live?.lon]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const runSearch = async (e) => {
+    e?.preventDefault();
+    const q = query.trim();
+    if (!q) return load(origin.lat, origin.lon);
+    setLoading(true);
+    setError(null);
+    try {
+      const list = await mapService.searchVendors(q, origin.lat, origin.lon);
+      setVendors(list);
+      if (!list.length) setError(`No one nearby is selling "${q}" right now.`);
+    } catch {
+      setError('Search failed. Try again.');
+    } finally {
+      setLoading(false);
+      resultsRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const useMyLocation = () => { refresh(); setFlyKey((k) => k + 1); };
+
+  const openVendor = (v) => navigate(`/order/${v.vendor_id}`, { state: { vendor: v } });
+
+  const filtered = useMemo(() => {
+    const list = category === 'All'
+      ? vendors
+      : vendors.filter((v) =>
+          (Array.isArray(v.menu) ? v.menu : []).some((i) =>
+            i.name?.toLowerCase().includes(category.toLowerCase().split(' ')[0])));
+    return [...list].sort((a, b) => (a.distance ?? 99) - (b.distance ?? 99));
+  }, [vendors, category]);
+
+  return (
+    <div className="min-h-[100dvh]">
+
+      {/* ------------------------------- nav ------------------------------- */}
+      <nav className="pt-safe sticky top-0 z-[800] border-b border-text/5 bg-white/78 backdrop-blur-xl">
+        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 sm:px-6">
+          <Link to="/" className="font-display shrink-0 text-lg font-extrabold tracking-tight text-text sm:text-xl">
+            Hyper<span className="text-primary">Local</span>
+          </Link>
+
+          <div className="ml-auto hidden items-center gap-1.5 md:flex">
+            <Link to="/map" className="btn-ghost px-4 py-2 text-[13px]">Explore map</Link>
+            {showVendorEntry && (
+              <Link to="/vendor/login" className="btn-ghost px-4 py-2 text-[13px]">For vendors</Link>
+            )}
+            {isCustomer && (
+              <>
+                <Link to="/customer/profile" className="btn-ghost px-4 py-2 text-[13px]">My orders</Link>
+                <NotificationBell />
+              </>
+            )}
+            {user ? (
+              <>
+                <Link to="/customer/profile" className="btn-ghost flex items-center gap-1.5 px-4 py-2 text-[13px]">
+                  <User size={14} />
+                  {(user.name || user.username || user.email || '?').split(' ')[0]}
+                </Link>
+                <button onClick={() => { logout(); navigate('/'); }} className="btn-ghost px-3.5 py-2 text-[13px]" aria-label="Log out">
+                  <LogOut size={14} />
+                </button>
+              </>
+            ) : (
+              <>
+                <Link to="/login" className="btn-ghost px-4 py-2 text-[13px]">Log in</Link>
+                <Link to="/register" className="btn-ember px-5 py-2 text-[13px]">Sign up</Link>
+              </>
+            )}
+          </div>
+
+          <div className="ml-auto flex items-center gap-2 md:hidden">
+            {isCustomer && <NotificationBell />}
+          </div>
+          <button onClick={() => setMenuOpen((v) => !v)}
+            className="btn-ghost p-2.5 md:hidden" aria-label="Menu" aria-expanded={menuOpen}>
+            {menuOpen ? <X size={17} /> : <Menu size={17} />}
+          </button>
+        </div>
+
+        {menuOpen && (
+          <div className="animate-slide-up border-t border-text/5 px-4 pb-4 pt-2 md:hidden">
+            <div className="flex flex-col gap-1.5">
+              <Link to="/map" onClick={() => setMenuOpen(false)} className="btn-ghost px-4 py-2.5 text-center text-[13px]">Explore map</Link>
+              {showVendorEntry && (
+                <Link to="/vendor/login" onClick={() => setMenuOpen(false)} className="btn-ghost px-4 py-2.5 text-center text-[13px]">For vendors</Link>
+              )}
+              {showAdminEntry && (
+                <Link to="/admin/login" onClick={() => setMenuOpen(false)} className="btn-ghost px-4 py-2.5 text-center text-[13px]">Admin</Link>
+              )}
+              {isCustomer && (
+                <>
+                  <Link to="/customer/profile" onClick={() => setMenuOpen(false)} className="btn-ghost px-4 py-2.5 text-center text-[13px]">My orders</Link>
+                  <Link to="/customer/profile?tab=addresses" onClick={() => setMenuOpen(false)} className="btn-ghost px-4 py-2.5 text-center text-[13px]">Saved addresses</Link>
+                </>
+              )}
+              {user ? (
+                <button onClick={() => { logout(); setMenuOpen(false); navigate('/'); }} className="btn-ghost px-4 py-2.5 text-[13px]">Log out</button>
+              ) : (
+                <>
+                  <Link to="/login" onClick={() => setMenuOpen(false)} className="btn-ghost px-4 py-2.5 text-center text-[13px]">Log in</Link>
+                  <Link to="/register" onClick={() => setMenuOpen(false)} className="btn-ember px-4 py-2.5 text-center text-[13px]">Sign up</Link>
+                </>
+              )}
+            </div>
+          </div>
+        )}
+      </nav>
+
+      {/* ------------------------------ hero ------------------------------- */}
+      <header className="relative overflow-hidden">
+        {/* Full-bleed food photography, scrimmed so white type stays readable and the
+            bottom edge dissolves into the page background rather than cutting hard.
+            Served responsively: phones pull the 96KB webp, not the 5.6MB original. */}
+        <div className="absolute inset-0 z-0">
+          <picture>
+            <source
+              media="(max-width: 640px)"
+              srcSet="/images/hero-sm.webp"
+              type="image/webp"
+            />
+            <source srcSet="/images/hero-lg.webp" type="image/webp" />
+            <img
+              src="/images/hero-lg.jpg"
+              alt=""
+              aria-hidden="true"
+              fetchPriority="high"
+              className="h-full w-full object-cover"
+            />
+          </picture>
+          <div
+            className="absolute inset-0"
+            style={{
+              background:
+                'linear-gradient(to bottom, rgba(45,45,45,0.86) 0%, rgba(45,45,45,0.60) 42%, rgba(45,45,45,0.34) 68%, rgba(253,253,253,0.72) 90%, #FDFDFD 100%)',
+            }}
+          />
+          {/* warm ember wash so the photo sits inside the brand palette */}
+          <div className="absolute inset-0 bg-gradient-to-tr from-primary/25 via-transparent to-secondary/15" />
+        </div>
+
+        <div className="relative z-10 mx-auto max-w-7xl px-4 pb-20 pt-12 sm:px-6 sm:pb-28 sm:pt-20">
+          <div className="stagger mx-auto max-w-3xl text-center">
+            <div className="inline-flex items-center gap-2 rounded-full border border-success/40 bg-black/30 px-3.5 py-1.5 backdrop-blur-sm">
+              <span className="h-1.5 w-1.5 animate-breathe rounded-full bg-success" />
+              <span className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-success-light">
+                {loading ? 'Scanning your area' : `${vendors.length} vendors broadcasting now`}
+              </span>
+            </div>
+
+            <h1 className="mt-5 text-[2.5rem] font-black leading-[0.95] tracking-tight text-white drop-shadow-[0_2px_18px_rgba(0,0,0,0.45)] sm:text-6xl lg:text-7xl">
+              Street food that's
+              <span className="block bg-gradient-to-r from-primary-light via-primary to-secondary bg-clip-text text-transparent">
+                actually there.
+              </span>
+            </h1>
+
+            <p className="mx-auto mt-4 max-w-lg text-[14px] leading-relaxed text-white/85 drop-shadow-[0_1px_10px_rgba(0,0,0,0.5)] sm:mt-5 sm:text-base">
+              Vendors broadcast for three hours, then drop off the map. If you can see it
+              here, someone is standing behind that grill right now.
+            </p>
+
+            {/* search */}
+            <form onSubmit={runSearch} className="mx-auto mt-7 max-w-xl">
+              <div className="panel flex flex-col gap-2 p-2 sm:flex-row sm:items-center">
+                <div className="relative flex-1">
+                  <Search size={16} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-text-lighter" />
+                  <input
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Pilau, samosa, nyama choma…"
+                    aria-label="Search for a dish"
+                    className="field w-full border-transparent bg-transparent py-3 pl-10 pr-3 text-[14px] font-medium shadow-none focus:bg-white/60"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button type="submit" disabled={loading} className="btn-ember flex-1 px-6 py-3 text-[13px] sm:flex-none">
+                    {loading ? <Loader2 size={15} className="mx-auto animate-spin" /> : 'Find food'}
+                  </button>
+                  <button type="button" onClick={useMyLocation}
+                    className="btn-ghost flex items-center justify-center gap-1.5 px-4 py-3 text-[13px]"
+                    title="Use my location">
+                    <Navigation size={14} className="text-primary" />
+                    <span className="sm:hidden">Near me</span>
+                  </button>
+                </div>
+              </div>
+            </form>
+
+            {/* categories */}
+            <div className="no-scrollbar mt-4 flex gap-2 overflow-x-auto pb-1 sm:justify-center">
+              {CATEGORIES.map((c) => (
+                <button key={c} onClick={() => setCategory(c)}
+                  className={`shrink-0 rounded-full px-3.5 py-1.5 text-[12px] font-bold transition-all ${
+                    category === c
+                      ? 'bg-primary text-white shadow-lg'
+                      : 'border border-white/25 bg-black/25 text-white/90 backdrop-blur-sm hover:border-primary/60 hover:bg-black/40'
+                  }`}>
+                  {c}
+                </button>
+              ))}
+            </div>
+
+            <div className="mx-auto mt-4 max-w-md rounded-xl border border-white/20 bg-black/30 p-2.5 text-left backdrop-blur-sm">
+              <AreaBar
+                origin={{ ...origin, source: isDefaultOrigin ? 'default' : searchOrigin.source, label: searchOrigin.label }}
+                isDefault={isDefaultOrigin}
+                geoStatus={status}
+                onUseMyLocation={useMyLocation}
+                onPick={(lat, lon, label) => {
+                  setOrigin({ lat, lon });
+                  updateLocation(lat, lon, { source: 'manual', label });
+                  load(lat, lon);
+                  setFlyKey((k) => k + 1);
+                }}
+                compact
+                onDark
+              />
+            </div>
+          </div>
+        </div>
+      </header>
+
+      {/* ----------------------------- results ----------------------------- */}
+      <section ref={resultsRef} className="relative z-10 mx-auto -mt-8 max-w-7xl px-4 pb-20 sm:-mt-10 sm:px-6">
+        <div className="mb-4 flex items-end justify-between gap-3">
+          <div>
+            <h2 className="font-display text-xl font-bold text-text sm:text-2xl">Live near you</h2>
+            <p className="tabular mt-0.5 text-[12px] font-semibold text-text-lighter">
+              {loading ? 'Scanning…' : `${filtered.length} within ${RADIUS_M / 1000}km`}
+              {error && <span className="ml-2 text-warning-dark">{error}</span>}
+            </p>
+          </div>
+
+          <div className="flex shrink-0 rounded-full border border-text/8 bg-white/70 p-0.5">
+            <button onClick={() => setView('grid')} aria-label="Grid view"
+              className={`rounded-full p-2 transition-all ${
+                view === 'grid' ? 'bg-primary text-white shadow-sm' : 'text-text-lighter hover:text-text'}`}>
+              <LayoutGrid size={15} />
+            </button>
+            <button onClick={() => setView('map')} aria-label="Map view"
+              className={`rounded-full p-2 transition-all ${
+                view === 'map' ? 'bg-primary text-white shadow-sm' : 'text-text-lighter hover:text-text'}`}>
+              <MapIcon size={15} />
+            </button>
+          </div>
+        </div>
+
+        {view === 'map' ? (
+          <div className="panel overflow-hidden p-0">
+            <LiveMap
+              vendors={filtered}
+              center={[origin.lat, origin.lon]}
+              userLocation={live}
+              onVendorSelect={openVendor}
+              onMapClick={(lat, lon) => { setOrigin({ lat, lon }); updateLocation(lat, lon); load(lat, lon); }}
+              flyKey={flyKey}
+              height="clamp(24rem, 62dvh, 40rem)"
+            />
+          </div>
+        ) : loading ? (
+          <div className="grid grid-cols-2 gap-3.5 sm:gap-5 lg:grid-cols-4">
+            {Array.from({ length: 8 }).map((_, i) => <div key={i} className="panel skeleton h-64" />)}
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="panel flex flex-col items-center justify-center px-6 py-16 text-center">
+            <Store size={38} className="mb-3 text-neutral-dark" />
+            <p className="font-display text-base font-bold text-text">Nothing broadcasting here</p>
+            <p className="mt-1 max-w-sm text-[13px] text-text-lighter">
+              Every vendor's three-hour window has closed. Try a different area or check back at mealtime.
+            </p>
+            <button onClick={() => { setQuery(''); setCategory('All'); setOrigin(NAIROBI); load(NAIROBI.lat, NAIROBI.lon); }}
+              className="btn-ghost mt-5 px-5 py-2.5 text-[13px]">
+              Reset search
+            </button>
+          </div>
+        ) : (
+          <div className="stagger grid grid-cols-2 gap-3.5 sm:gap-5 lg:grid-cols-4">
+            {filtered.map((v) => <VendorCard key={v.id} vendor={v} onOpen={openVendor} />)}
+          </div>
+        )}
+      </section>
+
+      {/* ------------------------------ footer ----------------------------- */}
+      <footer className="border-t border-text/6 bg-white/50">
+        <div className="mx-auto grid max-w-7xl gap-8 px-4 py-12 sm:px-6 md:grid-cols-3">
+          <div>
+            <div className="font-display text-lg font-extrabold tracking-tight text-text">
+              Hyper<span className="text-primary">Local</span>
+            </div>
+            <p className="mt-2.5 max-w-xs text-[13px] leading-relaxed text-text-light">
+              Connecting neighbourhoods with the vendors who are open right now — never a
+              wasted walk.
+            </p>
+          </div>
+
+          <div>
+            <h3 className="text-[11px] font-extrabold uppercase tracking-[0.14em] text-text-lighter">Explore</h3>
+            <ul className="mt-3 space-y-2 text-[13px] font-semibold text-text-light">
+              <li><Link to="/map" className="transition-colors hover:text-primary">Find on map</Link></li>
+              {isAnonymous && (
+                <li><Link to="/login" className="transition-colors hover:text-primary">Customer login</Link></li>
+              )}
+              {isCustomer && (
+                <>
+                  <li><Link to="/customer/profile" className="transition-colors hover:text-primary">My orders</Link></li>
+                  <li><Link to="/customer/profile?tab=addresses" className="transition-colors hover:text-primary">Saved addresses</Link></li>
+                </>
+              )}
+              {showVendorEntry && (
+                <li><Link to="/vendor/login" className="transition-colors hover:text-primary">Vendor login</Link></li>
+              )}
+              {showAdminEntry && (
+                <li>
+                  <Link to="/admin/login" className="inline-flex items-center gap-1.5 transition-colors hover:text-primary">
+                    <ShieldCheck size={13} /> Admin
+                  </Link>
+                </li>
+              )}
+            </ul>
+          </div>
+
+          {showVendorEntry ? (
+          <div className="panel p-5">
+            <div className="flex items-center gap-2">
+              <Clock size={15} className="text-primary" />
+              <h3 className="font-display text-[14px] font-bold text-text">Sell with us</h3>
+            </div>
+            <p className="mt-2 text-[12.5px] leading-relaxed text-text-light">
+              Broadcast your stall, take M-Pesa, and get walking directions to every paid order.
+            </p>
+            <button onClick={() => navigate('/vendor/register')} className="btn-ember mt-4 w-full py-2.5 text-[13px]">
+              Register your stall
+            </button>
+          </div>
+          ) : (
+          <div className="panel p-5">
+            <div className="flex items-center gap-2">
+              <Clock size={15} className="text-primary" />
+              <h3 className="font-display text-[14px] font-bold text-text">Never miss a stall</h3>
+            </div>
+            <p className="mt-2 text-[12.5px] leading-relaxed text-text-light">
+              Follow your favourites and we'll email you the moment they go live.
+            </p>
+            <button onClick={() => navigate('/customer/profile')} className="btn-ember mt-4 w-full py-2.5 text-[13px]">
+              View my orders
+            </button>
+          </div>
+          )}
+        </div>
+
+        <div className="border-t border-text/6 py-5 text-center text-[11px] font-semibold text-text-lighter">
+          © {new Date().getFullYear()} HyperLocal · Nairobi, Kenya
+        </div>
+      </footer>
+
+      <CartReminder />
+    </div>
+  );
+}
